@@ -33,6 +33,17 @@ const profile: AccountProfile = {
   updatedAt: "2026-06-26T00:00:00.000Z",
 };
 
+const homeProfile: AccountProfile = {
+  ...profile,
+  id: "00000000-0000-4000-8000-000000000002",
+  name: "Home",
+  normalizedName: "home",
+  note: "个人",
+  registrableDomain: "example.org",
+  cookies: [],
+  webStorageByOrigin: {},
+};
+
 function result<T>(data: T): OperationResult<T> {
   return { ok: true, data };
 }
@@ -57,9 +68,11 @@ describe("OptionsApp", () => {
       return result({});
     });
     render(<OptionsApp send={send} />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Cookie" }));
     expect(await screen.findByText("sid")).toBeInTheDocument();
     expect(screen.getByText(".example.com")).toBeInTheDocument();
     expect(screen.queryByText("secret-cookie-value")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "工具" }));
     expect(screen.getByText(/导出文件包含可直接使用的登录凭证/)).toBeInTheDocument();
   });
 });
@@ -72,6 +85,7 @@ describe("OptionsApp v1 管理能力", () => {
     });
     render(<OptionsApp send={send} />);
 
+    await userEvent.click(await screen.findByRole("tab", { name: "Cookie" }));
     await screen.findByDisplayValue("sid");
     await userEvent.selectOptions(screen.getByLabelText("SameSite"), "strict");
 
@@ -94,6 +108,7 @@ describe("OptionsApp v1 管理能力", () => {
     });
     render(<OptionsApp send={send} />);
 
+    await userEvent.click(await screen.findByRole("tab", { name: "Web Storage" }));
     await screen.findByText("https://app.example.com");
     await userEvent.type(screen.getByPlaceholderText("storage key"), "theme");
     await userEvent.type(screen.getByPlaceholderText("storage value"), "dark");
@@ -144,6 +159,7 @@ describe("OptionsApp v1 管理能力", () => {
     render(<OptionsApp send={send} />);
 
     await screen.findByText("example.com");
+    await userEvent.click(screen.getByRole("tab", { name: "工具" }));
     const input = document.querySelector<HTMLInputElement>("input[type='file']");
     expect(input).not.toBeNull();
     await userEvent.upload(input!, new File([JSON.stringify(bundle)], "profiles.json", { type: "application/json" }));
@@ -152,5 +168,50 @@ describe("OptionsApp v1 管理能力", () => {
     expect(screen.getByText(/覆盖 1/)).toBeInTheDocument();
     expect(screen.getByText(/涉及站点：example\.com, example\.org/)).toBeInTheDocument();
     expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: "importProfiles" }));
+  });
+
+  it("没有账号时仍然可以打开工具页导入配置", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "listAllProfiles") return result([]);
+      if (request.type === "listGrantedSites") return result([]);
+      return result({});
+    });
+    render(<OptionsApp send={send} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "打开工具" }));
+
+    expect(screen.getByRole("tabpanel", { name: "工具" })).toBeInTheDocument();
+    expect(screen.getByText("导入 JSON 文件")).toBeInTheDocument();
+  });
+
+  it("默认使用概览标签，并允许在详情标签之间切换", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "listAllProfiles") return result([profile]);
+      if (request.type === "listGrantedSites") return result([]);
+      return result({});
+    });
+    render(<OptionsApp send={send} />);
+
+    expect(await screen.findByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("tab", { name: "Cookie" }));
+    expect(screen.getByRole("tabpanel", { name: "Cookie" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Web Storage" }));
+    expect(screen.getByRole("tabpanel", { name: "Web Storage" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "工具" }));
+    expect(screen.getByRole("tabpanel", { name: "工具" })).toBeInTheDocument();
+  });
+
+  it("从左侧账号导航选择账号后，详情区显示对应账号", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "listAllProfiles") return result([profile, homeProfile]);
+      if (request.type === "listGrantedSites") return result([]);
+      return result({});
+    });
+    render(<OptionsApp send={send} />);
+
+    await screen.findByRole("button", { name: /Work/ });
+    await userEvent.click(screen.getByRole("button", { name: /Home/ }));
+
+    expect(screen.getByLabelText("账号名称")).toHaveValue("Home");
   });
 });

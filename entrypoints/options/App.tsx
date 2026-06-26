@@ -9,6 +9,14 @@ import "./style.css";
 
 type Send = (request: BackgroundRequest) => Promise<OperationResult<unknown>>;
 type StorageKind = "localStorage" | "sessionStorage";
+type ActiveTab = "overview" | "cookies" | "storage" | "tools";
+
+const tabs: { id: ActiveTab; label: string }[] = [
+  { id: "overview", label: "概览" },
+  { id: "cookies", label: "Cookie" },
+  { id: "storage", label: "Web Storage" },
+  { id: "tools", label: "工具" },
+];
 
 export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
   const [profiles, setProfiles] = useState<AccountProfile[]>([]);
@@ -16,7 +24,7 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState("");
-  const selected = profiles.find((profile) => profile.id === selectedId) ?? profiles[0];
+  const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
 
   async function load() {
     const [profileResult, originsResult] = await Promise.all([
@@ -41,71 +49,160 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
       || profile.note.toLocaleLowerCase().includes(needle));
   }, [profiles, query]);
 
+  const selected = filtered.find((profile) => profile.id === selectedId) ?? filtered[0];
+
   return (
     <main className="options-shell">
-      <aside className="sidebar">
-        <span className="eyebrow">Local credentials</span>
-        <h1>SwitchAccounts</h1>
-        <p>账号快照只保存在本机。导出文件是明文，请像保管密码一样保管它。</p>
-      </aside>
+      <AccountSidebar
+        profiles={filtered}
+        query={query}
+        selectedId={selected?.id ?? ""}
+        onQueryChange={setQuery}
+        onSelect={setSelectedId}
+        onTools={() => setActiveTab("tools")}
+      />
 
-      <section className="workspace">
+      <section className="detail-shell">
         {error && <div role="alert" className="warning">{error}</div>}
-        <div className="toolbar">
-          <label>
-            管理页搜索
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="网站、账号名称或备注" />
-          </label>
-        </div>
-
-        <section className="grid">
-          <Panel title="账号配置">
-            {filtered.map((profile) => (
-              <article key={profile.id} className={`row-card ${selected?.id === profile.id ? "selected" : ""}`}>
-                <div>
-                  <strong>{profile.registrableDomain}</strong>
-                  <span>{profile.name} · {profile.note || "无备注"}</span>
-                </div>
-                <small>{profile.cookies.length} Cookies · {Object.keys(profile.webStorageByOrigin).length} Origins</small>
-                <button type="button" onClick={() => setSelectedId(profile.id)}>编辑</button>
-              </article>
-            ))}
-            {selected && <ProfileForm profile={selected} send={send} onSaved={load} />}
-          </Panel>
-
-          <Panel title="Cookie 编辑器">
-            {selected ? <CookieEditor profile={selected} send={send} onSaved={load} /> : <p>请选择账号。</p>}
-          </Panel>
-
-          <Panel title="Web Storage 编辑器">
-            {selected ? <WebStorageEditor profile={selected} send={send} onSaved={load} /> : <p>请选择账号。</p>}
-          </Panel>
-
-          <Panel title="导入 / 导出">
-            <p className="warning">导出文件包含可直接使用的登录凭证。请勿上传、分享或保存在不可信位置。</p>
-            <ImportControl profiles={profiles} send={send} onImported={load} />
-            <button type="button" onClick={() => void exportAll(send, profiles)}>导出全部配置</button>
-          </Panel>
-
-          <Panel title="设置">
-            <p>数据格式版本：{SCHEMA_VERSION}</p>
-            <p>已授权网站：</p>
-            <ul>
-              {origins.map((origin) => (
-                <li key={origin}>
-                  {origin}
-                  <button type="button" onClick={() => void removeGrantedSite(origin, send, load)}>撤销</button>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        </section>
+        {selected ? (
+          <>
+            <AccountSummary profile={selected} />
+            <TabNav activeTab={activeTab} onChange={setActiveTab} />
+            <section className="tab-surface">
+              {activeTab === "overview" && (
+                <TabPanel id="overview" label="概览">
+                  <OverviewTab profile={selected} send={send} onSaved={load} />
+                </TabPanel>
+              )}
+              {activeTab === "cookies" && (
+                <TabPanel id="cookies" label="Cookie">
+                  <CookieTab profile={selected} send={send} onSaved={load} />
+                </TabPanel>
+              )}
+              {activeTab === "storage" && (
+                <TabPanel id="storage" label="Web Storage">
+                  <WebStorageTab profile={selected} send={send} onSaved={load} />
+                </TabPanel>
+              )}
+              {activeTab === "tools" && (
+                <TabPanel id="tools" label="工具">
+                  <ToolsTab profiles={profiles} origins={origins} send={send} onChanged={load} />
+                </TabPanel>
+              )}
+            </section>
+          </>
+        ) : activeTab === "tools" ? (
+          <>
+            <header className="account-summary">
+              <div>
+                <span className="eyebrow">工具</span>
+                <h2>导入 / 导出与设置</h2>
+                <p>没有账号时也可以先导入已有配置，或查看当前授权站点。</p>
+              </div>
+            </header>
+            <TabNav activeTab={activeTab} onChange={setActiveTab} />
+            <section className="tab-surface">
+              <TabPanel id="tools" label="工具">
+                <ToolsTab profiles={profiles} origins={origins} send={send} onChanged={load} />
+              </TabPanel>
+            </section>
+          </>
+        ) : (
+          <section className="empty-state">
+            <h2>{profiles.length === 0 ? "暂无账号配置" : "无匹配账号"}</h2>
+            <p>{profiles.length === 0 ? "可以从弹窗保存当前网站状态，或在工具中导入已有配置。" : "调整搜索条件后再选择账号。"}</p>
+            <button type="button" onClick={() => setActiveTab("tools")}>打开工具</button>
+          </section>
+        )}
       </section>
     </main>
   );
 }
 
-function ProfileForm({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
+function AccountSidebar({ profiles, query, selectedId, onQueryChange, onSelect, onTools }: {
+  profiles: AccountProfile[];
+  query: string;
+  selectedId: string;
+  onQueryChange: (query: string) => void;
+  onSelect: (profileId: string) => void;
+  onTools: () => void;
+}) {
+  return (
+    <aside className="account-sidebar">
+      <div className="brand-block">
+        <span className="eyebrow">Local credentials</span>
+        <h1>SwitchAccounts</h1>
+        <p>账号快照只保存在本机。导出文件是明文，请像保管密码一样保管它。</p>
+      </div>
+
+      <label className="search-box">
+        管理页搜索
+        <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="网站、账号名称或备注" />
+      </label>
+
+      <div className="profile-list" aria-label="账号列表">
+        {profiles.map((profile) => (
+          <button
+            key={profile.id}
+            type="button"
+            className={`profile-nav-card ${profile.id === selectedId ? "selected" : ""}`}
+            onClick={() => onSelect(profile.id)}
+          >
+            <span className="profile-domain">{profile.registrableDomain}</span>
+            <strong>{profile.name}</strong>
+            <small>{profile.note || "无备注"} · {profile.cookies.length} Cookies · {Object.keys(profile.webStorageByOrigin).length} Origins</small>
+          </button>
+        ))}
+        {profiles.length === 0 && <p className="muted">没有匹配的账号。</p>}
+      </div>
+
+      <button type="button" className="secondary sidebar-tool" onClick={onTools}>导入 / 导出与设置</button>
+    </aside>
+  );
+}
+
+function AccountSummary({ profile }: { profile: AccountProfile }) {
+  return (
+    <header className="account-summary">
+      <div>
+        <span className="eyebrow">当前账号</span>
+        <h2>{profile.name}</h2>
+        <p>{profile.registrableDomain} · {profile.cookies.length} Cookies · {Object.keys(profile.webStorageByOrigin).length} Origins</p>
+      </div>
+    </header>
+  );
+}
+
+function TabNav({ activeTab, onChange }: { activeTab: ActiveTab; onChange: (tab: ActiveTab) => void }) {
+  return (
+    <div className="tab-list" role="tablist" aria-label="账号详情">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          id={`tab-${tab.id}`}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          aria-controls={`panel-${tab.id}`}
+          className={`tab-button ${activeTab === tab.id ? "selected" : ""}`}
+          onClick={() => onChange(tab.id)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TabPanel({ id, label, children }: { id: ActiveTab; label: string; children: React.ReactNode }) {
+  return (
+    <section id={`panel-${id}`} role="tabpanel" aria-labelledby={`tab-${id}`} aria-label={label} className="tab-panel">
+      {children}
+    </section>
+  );
+}
+
+function OverviewTab({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
   const [name, setName] = useState(profile.name);
   const [note, setNote] = useState(profile.note);
 
@@ -129,10 +226,18 @@ function ProfileForm({ profile, send, onSaved }: { profile: AccountProfile; send
   }
 
   return (
-    <div className="editor-block">
+    <div className="overview-grid">
       <label>账号名称<input value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label>备注<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
-      <div className="button-row">
+      <div className="stat-card">
+        <strong>{profile.cookies.length}</strong>
+        <span>Cookies</span>
+      </div>
+      <div className="stat-card">
+        <strong>{Object.keys(profile.webStorageByOrigin).length}</strong>
+        <span>Origins</span>
+      </div>
+      <div className="button-row overview-actions">
         <button type="button" onClick={() => void save()}>保存账号信息</button>
         <button type="button" className="danger" onClick={() => void remove()}>删除账号</button>
       </div>
@@ -140,7 +245,7 @@ function ProfileForm({ profile, send, onSaved }: { profile: AccountProfile; send
   );
 }
 
-function CookieEditor({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
+function CookieTab({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
   const [filter, setFilter] = useState("");
   const visibleCookies = profile.cookies.filter((cookie) => {
     const haystack = `${cookie.name} ${cookie.domain} ${cookie.path}`.toLocaleLowerCase();
@@ -223,11 +328,12 @@ function CookieEditor({ profile, send, onSaved }: { profile: AccountProfile; sen
           </article>
         );
       })}
+      {visibleCookies.length === 0 && <p className="muted">没有匹配的 Cookie。</p>}
     </div>
   );
 }
 
-function WebStorageEditor({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
+function WebStorageTab({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
   async function updateStorage(origin: string, kind: StorageKind, key: string, value: string) {
     const snapshot = profile.webStorageByOrigin[origin];
     if (!snapshot) return;
@@ -263,13 +369,15 @@ function WebStorageEditor({ profile, send, onSaved }: { profile: AccountProfile;
     await onSaved();
   }
 
+  const entries = Object.entries(profile.webStorageByOrigin);
+
   return (
     <div className="editor-block">
-      {Object.entries(profile.webStorageByOrigin).map(([origin, snapshot]) => (
+      {entries.map(([origin, snapshot]) => (
         <section key={origin} className="storage-origin">
           <h3>{origin}</h3>
           {(["localStorage", "sessionStorage"] as const).map((kind) => (
-            <div key={kind}>
+            <div key={kind} className="storage-kind">
               <strong>{kind}</strong>
               {Object.entries(snapshot[kind]).map(([key, value]) => (
                 <div key={`${kind}-${key}`} className="storage-row">
@@ -283,6 +391,40 @@ function WebStorageEditor({ profile, send, onSaved }: { profile: AccountProfile;
           ))}
         </section>
       ))}
+      {entries.length === 0 && <p className="muted">这个账号没有保存 Web Storage。</p>}
+    </div>
+  );
+}
+
+function ToolsTab({ profiles, origins, send, onChanged }: {
+  profiles: AccountProfile[];
+  origins: string[];
+  send: Send;
+  onChanged: () => Promise<void>;
+}) {
+  return (
+    <div className="tools-grid">
+      <section className="tool-section">
+        <h3>导入 / 导出</h3>
+        <p className="warning">导出文件包含可直接使用的登录凭证。请勿上传、分享或保存在不可信位置。</p>
+        <ImportControl profiles={profiles} send={send} onImported={onChanged} />
+        <button type="button" onClick={() => void exportAll(send, profiles)}>导出全部配置</button>
+      </section>
+
+      <section className="tool-section">
+        <h3>设置</h3>
+        <p>数据格式版本：{SCHEMA_VERSION}</p>
+        <p>已授权网站：</p>
+        <ul>
+          {origins.map((origin) => (
+            <li key={origin}>
+              {origin}
+              <button type="button" onClick={() => void removeGrantedSite(origin, send, onChanged)}>撤销</button>
+            </li>
+          ))}
+        </ul>
+        {origins.length === 0 && <p className="muted">暂无已授权网站。</p>}
+      </section>
     </div>
   );
 }
@@ -300,7 +442,7 @@ function StorageAddForm({ kind, onAdd }: { kind: StorageKind; onAdd: (key: strin
   }
 
   return (
-    <div className="storage-row">
+    <div className="storage-row add-row">
       <input aria-label={`${kind} key`} placeholder={kind === "localStorage" ? "storage key" : "session storage key"} value={key} onChange={(event) => setKey(event.target.value)} />
       <input aria-label={`${kind} value`} placeholder={kind === "localStorage" ? "storage value" : "session storage value"} value={value} onChange={(event) => setValue(event.target.value)} />
       <button type="button" onClick={() => void add()}>添加 {kind}</button>
@@ -336,15 +478,6 @@ function ImportControl({ profiles, send, onImported }: { profiles: AccountProfil
       <label>导入 JSON 文件<input type="file" accept="application/json,.json" onChange={(event) => void importFile(event.target.files?.[0])} /></label>
       {summary && <p>{summary}</p>}
     </div>
-  );
-}
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="panel">
-      <h2>{title}</h2>
-      <div className="panel-body">{children}</div>
-    </section>
   );
 }
 
