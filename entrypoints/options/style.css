@@ -1,0 +1,112 @@
+:root {
+  color: #efe7d7;
+  background: #11100e;
+  font-family: "Segoe UI Variable", "Microsoft YaHei UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(110deg, rgba(220, 134, 42, .16), transparent 45%),
+    #11100e;
+}
+
+.options-shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  padding: 34px;
+  background: #1b1712;
+  border-right: 1px solid rgba(255, 255, 255, .08);
+}
+
+.eyebrow {
+  color: #e6aa48;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-size: 12px;
+}
+
+h1 {
+  font-size: 34px;
+  margin: 10px 0 20px;
+}
+
+h2 {
+  margin: 0;
+}
+
+.workspace {
+  padding: 34px;
+}
+
+.toolbar {
+  max-width: 620px;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: #d8cab3;
+}
+
+input {
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 16px;
+  padding: 12px 14px;
+  color: #fff8ea;
+  background: rgba(255, 255, 255, .06);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.panel {
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 24px;
+  padding: 20px;
+  background: rgba(255, 255, 255, .055);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .22);
+}
+
+.panel-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.row-card, .cookie-row {
+  display: grid;
+  gap: 4px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+}
+
+span, small, p, li {
+  color: #cfc2ae;
+}
+
+.warning {
+  border: 1px solid rgba(255, 165, 75, .34);
+  border-radius: 16px;
+  padding: 12px;
+  color: #ffd49a;
+  background: rgba(255, 165, 75, .1);
+}
+
+button {
+  width: fit-content;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 16px;
+  font-weight: 800;
+  color: #14100b;
+  background: #eab35f;
+}
