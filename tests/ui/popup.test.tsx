@@ -65,3 +65,43 @@ describe("PopupApp", () => {
     expect(send).toHaveBeenCalledWith({ type: "resetSite", tabId: 1 });
   });
 });
+
+describe("PopupApp error recovery", () => {
+  it("新增账号消息异常时显示错误并恢复按钮", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "getCurrentSite") return result(site);
+      if (request.type === "listProfiles") return result([]);
+      if (request.type === "createProfile") throw new Error("This function must be called during a user gesture");
+      return result({});
+    });
+    render(<PopupApp tabId={1} send={send} />);
+
+    await screen.findByText("暂无账号配置");
+    await userEvent.type(screen.getByLabelText("账号名称"), "Work");
+    await userEvent.click(screen.getByRole("button", { name: "新增账号" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This function must be called during a user gesture");
+    expect(screen.getByRole("button", { name: "新增账号" })).toBeEnabled();
+  });
+
+  it("首次新增账号时先在 Popup 用户手势内申请站点权限", async () => {
+    const unauthorizedSite: CurrentSiteData = { ...site, authorized: false };
+    const requestPermission = vi.fn(async () => true);
+    const send = vi.fn(async (request) => {
+      if (request.type === "getCurrentSite") return result(unauthorizedSite);
+      if (request.type === "listProfiles") return result([]);
+      if (request.type === "createProfile") return result(profile);
+      return result({});
+    });
+    render(<PopupApp tabId={1} send={send} requestPermission={requestPermission} />);
+
+    const user = userEvent.setup();
+    await screen.findByText("暂无账号配置");
+    await user.type(screen.getByLabelText("账号名称"), "Work");
+    await waitFor(() => expect(screen.getByLabelText("账号名称")).toHaveValue("Work"));
+    await user.click(screen.getByRole("button", { name: "新增账号" }));
+
+    await waitFor(() => expect(requestPermission).toHaveBeenCalledWith(site.scope.permissionOrigins));
+    expect(send).toHaveBeenCalledWith({ type: "createProfile", tabId: 1, name: "Work", note: "" });
+  });
+});

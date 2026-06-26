@@ -11,10 +11,12 @@ import { toSafeErrorText } from "../../src/ui/errors";
 import "./style.css";
 
 type Send = (request: BackgroundRequest) => Promise<OperationResult<unknown>>;
+type RequestPermission = (origins: string[]) => Promise<boolean>;
 
-export default function PopupApp({ tabId, send = sendBackground }: {
+export default function PopupApp({ tabId, send = sendBackground, requestPermission = requestChromePermission }: {
   tabId: number;
   send?: Send;
+  requestPermission?: RequestPermission;
 }) {
   const [site, setSite] = useState<CurrentSiteData | null>(null);
   const [profiles, setProfiles] = useState<AccountProfile[]>([]);
@@ -46,23 +48,40 @@ export default function PopupApp({ tabId, send = sendBackground }: {
 
   const visibleProfiles = useMemo(() => searchProfiles(profiles, query), [profiles, query]);
 
-  async function run(request: BackgroundRequest, reload = true) {
+  async function run(request: BackgroundRequest, reload = true): Promise<boolean> {
     setBusy(true);
     setError("");
-    const result = await send(request);
-    setBusy(false);
-    if (!result.ok) {
-      setError(toSafeErrorText(result.error));
-      return;
+    try {
+      if (needsSitePermission(request) && site && !site.authorized) {
+        const granted = await requestPermission(site.scope.permissionOrigins);
+        if (!granted) {
+          setError("未获得当前网站权限，无法读取 Cookie 或 Web Storage。");
+          return false;
+        }
+        setSite({ ...site, authorized: true });
+      }
+      const result = await send(request);
+      if (!result.ok) {
+        setError(toSafeErrorText(result.error));
+        return false;
+      }
+      if (reload) await load();
+      return true;
+    } catch (unknownError) {
+      setError(unknownError instanceof Error ? unknownError.message : "操作失败，请重试。");
+      return false;
+    } finally {
+      setBusy(false);
     }
-    if (reload) await load();
   }
 
   async function createProfile(event: React.FormEvent) {
     event.preventDefault();
-    await run({ type: "createProfile", tabId, name, note });
-    setName("");
-    setNote("");
+    const saved = await run({ type: "createProfile", tabId, name, note });
+    if (saved) {
+      setName("");
+      setNote("");
+    }
   }
 
   if (!site && !error) return <main className="popup-shell">加载当前站点…</main>;
@@ -145,4 +164,15 @@ export default function PopupApp({ tabId, send = sendBackground }: {
       )}
     </main>
   );
+}
+
+async function requestChromePermission(origins: string[]): Promise<boolean> {
+  return browser.permissions.request({ origins });
+}
+
+function needsSitePermission(request: BackgroundRequest): boolean {
+  return request.type === "createProfile"
+    || request.type === "overwriteProfile"
+    || request.type === "switchProfile"
+    || request.type === "resetSite";
 }
