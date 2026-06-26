@@ -120,6 +120,19 @@ export type WebStorageCommand =
   | { type: "clearWebStorage" }
   | { type: "writeWebStorage"; snapshot: WebStorageSnapshot };
 
+export interface ChromeAdapter {
+  getTab(tabId: number): Promise<chrome.tabs.Tab>;
+  containsOrigins(origins: string[]): Promise<boolean>;
+  requestOrigins(origins: string[]): Promise<boolean>;
+  getCookies(domain: string): Promise<chrome.cookies.Cookie[]>;
+  removeCookie(details: chrome.cookies.CookieDetails): Promise<void>;
+  setCookie(details: chrome.cookies.SetDetails): Promise<chrome.cookies.Cookie>;
+  reloadTab(tabId: number): Promise<void>;
+  sendTabMessage<T>(tabId: number, message: WebStorageCommand): Promise<T>;
+  getAllOrigins(): Promise<string[]>;
+  removeOrigins(origins: string[]): Promise<boolean>;
+}
+
 export function ok<T>(data: T): OperationResult<T> {
   return { ok: true, data };
 }
