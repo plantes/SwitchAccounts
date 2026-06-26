@@ -20,6 +20,7 @@ function makeDeps(options: {
   requestGranted?: boolean;
   cookies?: chrome.cookies.Cookie[];
   webStorage?: WebStorageSnapshot;
+  missingWebStorageResponse?: boolean;
   repository?: ProfileRepository;
   failSetCookie?: boolean;
   failWriteStorage?: boolean;
@@ -31,6 +32,7 @@ function makeDeps(options: {
     message: Parameters<ChromeAdapter["sendTabMessage"]>[1],
   ): Promise<T> => {
     calls.push(message.type);
+    if (message.type === "readWebStorage" && options.missingWebStorageResponse) return undefined as T;
     if (message.type === "readWebStorage") return (options.webStorage ?? storage) as T;
     if (message.type === "writeWebStorage" && options.failWriteStorage) throw new Error("write failed");
     return { ok: true } as T;
@@ -148,5 +150,14 @@ describe("BackgroundOperations", () => {
     await expect(ops.resetSite(1)).resolves.toMatchObject({ ok: true });
     expect(calls).toEqual(["clearWebStorage", "reload"]);
     expect(getRepository()).toBe(existing);
+  });
+});
+describe("BackgroundOperations defensive browser boundaries", () => {
+  it("Web Storage 无响应时返回读取失败而不是写入非法仓库", async () => {
+    const { ops } = makeDeps({ missingWebStorageResponse: true });
+    await expect(ops.createProfile(1, "Work")).resolves.toMatchObject({
+      ok: false,
+      error: { code: "WEB_STORAGE_READ_FAILED" },
+    });
   });
 });

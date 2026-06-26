@@ -15,7 +15,7 @@ import type {
 import { fail, ok, SCHEMA_VERSION } from "../domain/models";
 import { hasDuplicateName, isEmptySnapshot, normalizeProfileName } from "../domain/profiles";
 import { resolveSiteScope } from "../domain/site-scope";
-import { AccountProfileSchema } from "../domain/schemas";
+import { AccountProfileSchema, WebStorageSnapshotSchema } from "../domain/schemas";
 import type { ProfileRepositoryStore } from "../infrastructure/profile-repository";
 import type { SiteOperationLock } from "../infrastructure/site-lock";
 
@@ -219,8 +219,12 @@ export class BackgroundOperations {
   }>> {
     try {
       const cookies = (await this.deps.chrome.getCookies(scope.registrableDomain)).map(fromChromeCookie);
-      const webStorage = await this.deps.chrome.sendTabMessage<WebStorageSnapshot>(tabId, { type: "readWebStorage" });
-      return ok({ cookies, webStorage });
+      const webStorage = await this.deps.chrome.sendTabMessage<unknown>(tabId, { type: "readWebStorage" });
+      const parsed = WebStorageSnapshotSchema.safeParse(webStorage);
+      if (!parsed.success) {
+        return fail("WEB_STORAGE_READ_FAILED", "读取 Web Storage 失败。", parsed.error.issues.map((issue) => issue.message));
+      }
+      return ok({ cookies, webStorage: parsed.data as WebStorageSnapshot });
     } catch (error) {
       return fail("COOKIE_READ_FAILED", "读取当前网站状态失败。", error instanceof Error ? error.message : String(error));
     }

@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AccountProfile, BackgroundRequest, CookieSnapshot, OperationResult, WebStorageSnapshot } from "../../src/domain/models";
+import { SCHEMA_VERSION } from "../../src/domain/models";
+import { previewImport } from "../../src/domain/import-export";
 import { normalizeProfileName, searchProfiles } from "../../src/domain/profiles";
 import { sendBackground } from "../../src/ui/client";
 import { toSafeErrorText } from "../../src/ui/errors";
 import "./style.css";
 
 type Send = (request: BackgroundRequest) => Promise<OperationResult<unknown>>;
+type StorageKind = "localStorage" | "sessionStorage";
 
 export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
   const [profiles, setProfiles] = useState<AccountProfile[]>([]);
   const [origins, setOrigins] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selectedId, setSelectedId] = useState("");
   const selected = profiles.find((profile) => profile.id === selectedId) ?? profiles[0];
 
   async function load() {
@@ -80,15 +83,20 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
 
           <Panel title="导入 / 导出">
             <p className="warning">导出文件包含可直接使用的登录凭证。请勿上传、分享或保存在不可信位置。</p>
-            <ImportControl send={send} onImported={load} />
+            <ImportControl profiles={profiles} send={send} onImported={load} />
             <button type="button" onClick={() => void exportAll(send, profiles)}>导出全部配置</button>
           </Panel>
 
           <Panel title="设置">
-            <p>数据格式版本：1</p>
+            <p>数据格式版本：{SCHEMA_VERSION}</p>
             <p>已授权网站：</p>
             <ul>
-              {origins.map((origin) => <li key={origin}>{origin}</li>)}
+              {origins.map((origin) => (
+                <li key={origin}>
+                  {origin}
+                  <button type="button" onClick={() => void removeGrantedSite(origin, send, load)}>撤销</button>
+                </li>
+              ))}
             </ul>
           </Panel>
         </section>
@@ -104,7 +112,7 @@ function ProfileForm({ profile, send, onSaved }: { profile: AccountProfile; send
   useEffect(() => {
     setName(profile.name);
     setNote(profile.note);
-  }, [profile.id]);
+  }, [profile.id, profile.name, profile.note]);
 
   async function save() {
     await send({
@@ -144,9 +152,13 @@ function CookieEditor({ profile, send, onSaved }: { profile: AccountProfile; sen
     const current = cookies[index];
     if (!current) return;
     const next: CookieSnapshot = { ...current, ...patch };
+    if (next.session) delete next.expirationDate;
     if (!next.name.trim()) return window.alert("Cookie 名称不能为空。");
     if (!next.path.startsWith("/")) return window.alert("Cookie path 必须以 / 开始。");
     if (next.sameSite === "no_restriction" && !next.secure) return window.alert("SameSite=None 必须启用 Secure。");
+    if (!next.session && (next.expirationDate === undefined || !Number.isFinite(next.expirationDate) || next.expirationDate <= 0)) {
+      return window.alert("Persistent Cookie 必须设置有效的 Expiration。");
+    }
     cookies[index] = next;
     await send({ type: "updateProfile", profile: { ...profile, cookies, updatedAt: new Date().toISOString() } });
     await onSaved();
@@ -174,6 +186,39 @@ function CookieEditor({ profile, send, onSaved }: { profile: AccountProfile; sen
             <label>路径<input value={cookie.path} onChange={(event) => void updateCookie(index, { path: event.target.value })} /></label>
             <label><input type="checkbox" checked={cookie.secure} onChange={(event) => void updateCookie(index, { secure: event.target.checked })} /> Secure</label>
             <label><input type="checkbox" checked={cookie.httpOnly} onChange={(event) => void updateCookie(index, { httpOnly: event.target.checked })} /> HttpOnly</label>
+            <label>
+              SameSite
+              <select value={cookie.sameSite} onChange={(event) => void updateCookie(index, { sameSite: event.target.value as CookieSnapshot["sameSite"] })}>
+                <option value="lax">Lax</option>
+                <option value="strict">Strict</option>
+                <option value="no_restriction">None</option>
+                <option value="unspecified">Unspecified</option>
+              </select>
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={cookie.session}
+                onChange={(event) => void updateCookie(index, event.target.checked
+                  ? { session: true }
+                  : { session: false, expirationDate: cookie.expirationDate ?? Math.floor(Date.now() / 1000) + 31_536_000 })}
+              /> Session cookie
+            </label>
+            <label>
+              Expiration
+              <input
+                type="number"
+                min="1"
+                disabled={cookie.session}
+                value={cookie.expirationDate ?? ""}
+                onChange={(event) => {
+                  const value = event.target.value.trim();
+                  if (!value) return window.alert("Persistent Cookie 必须设置有效的 Expiration。");
+                  void updateCookie(index, { expirationDate: Number(value) });
+                }}
+              />
+            </label>
+            <small>hostOnly: {String(cookie.hostOnly)} · storeId: {cookie.storeId}{cookie.partitionKey ? " · partitioned" : ""}</small>
             <button type="button" className="danger" onClick={() => void deleteCookie(index)}>删除 Cookie</button>
           </article>
         );
@@ -183,7 +228,7 @@ function CookieEditor({ profile, send, onSaved }: { profile: AccountProfile; sen
 }
 
 function WebStorageEditor({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
-  async function updateStorage(origin: string, kind: "localStorage" | "sessionStorage", key: string, value: string) {
+  async function updateStorage(origin: string, kind: StorageKind, key: string, value: string) {
     const snapshot = profile.webStorageByOrigin[origin];
     if (!snapshot) return;
     const nextSnapshot: WebStorageSnapshot = {
@@ -201,7 +246,7 @@ function WebStorageEditor({ profile, send, onSaved }: { profile: AccountProfile;
     await onSaved();
   }
 
-  async function deleteStorage(origin: string, kind: "localStorage" | "sessionStorage", key: string) {
+  async function deleteStorage(origin: string, kind: StorageKind, key: string) {
     const snapshot = profile.webStorageByOrigin[origin];
     if (!snapshot) return;
     const nextValues = { ...snapshot[kind] };
@@ -233,6 +278,7 @@ function WebStorageEditor({ profile, send, onSaved }: { profile: AccountProfile;
                   <button type="button" className="danger" onClick={() => void deleteStorage(origin, kind, key)}>删除</button>
                 </div>
               ))}
+              <StorageAddForm kind={kind} onAdd={(key, value) => updateStorage(origin, kind, key, value)} />
             </div>
           ))}
         </section>
@@ -241,23 +287,48 @@ function WebStorageEditor({ profile, send, onSaved }: { profile: AccountProfile;
   );
 }
 
-function ImportControl({ send, onImported }: { send: Send; onImported: () => Promise<void> }) {
+function StorageAddForm({ kind, onAdd }: { kind: StorageKind; onAdd: (key: string, value: string) => Promise<void> }) {
+  const [key, setKey] = useState("");
+  const [value, setValue] = useState("");
+
+  async function add() {
+    const cleanKey = key.trim();
+    if (!cleanKey) return window.alert("Storage key 不能为空。");
+    await onAdd(cleanKey, value);
+    setKey("");
+    setValue("");
+  }
+
+  return (
+    <div className="storage-row">
+      <input aria-label={`${kind} key`} placeholder={kind === "localStorage" ? "storage key" : "session storage key"} value={key} onChange={(event) => setKey(event.target.value)} />
+      <input aria-label={`${kind} value`} placeholder={kind === "localStorage" ? "storage value" : "session storage value"} value={value} onChange={(event) => setValue(event.target.value)} />
+      <button type="button" onClick={() => void add()}>添加 {kind}</button>
+    </div>
+  );
+}
+
+function ImportControl({ profiles, send, onImported }: { profiles: AccountProfile[]; send: Send; onImported: () => Promise<void> }) {
   const [summary, setSummary] = useState("");
 
   async function importFile(file: File | undefined) {
     if (!file) return;
-    const text = await file.text();
-    const bundle = JSON.parse(text);
-    const profileCount = Array.isArray(bundle.profiles) ? bundle.profiles.length : 0;
-    setSummary(`准备导入 ${profileCount} 个账号配置。冲突账号将被导入内容覆盖。`);
-    if (!window.confirm("确认导入？冲突配置将由导入内容覆盖。")) return;
-    const result = await send({ type: "importProfiles", bundle });
-    if (!result.ok) {
-      setSummary(toSafeErrorText(result.error));
-      return;
+    try {
+      const text = await readFileText(file);
+      const bundle = JSON.parse(text) as unknown;
+      const preview = previewImport({ schemaVersion: SCHEMA_VERSION, profiles }, bundle);
+      setSummary(`新增 ${preview.added} 个，覆盖 ${preview.overwritten} 个。涉及站点：${preview.sites.join(", ") || "无"}`);
+      if (!window.confirm("确认导入？冲突配置将由导入内容覆盖。")) return;
+      const result = await send({ type: "importProfiles", bundle: preview.bundle });
+      if (!result.ok) {
+        setSummary(toSafeErrorText(result.error));
+        return;
+      }
+      setSummary("导入成功。");
+      await onImported();
+    } catch {
+      setSummary("导入文件无效，未写入任何配置。");
     }
-    setSummary("导入成功。");
-    await onImported();
   }
 
   return (
@@ -288,4 +359,19 @@ async function exportAll(send: Send, profiles: AccountProfile[]) {
   anchor.download = `switchaccounts-${profiles.length}-profiles.json`;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+async function removeGrantedSite(origin: string, send: Send, onRemoved: () => Promise<void>) {
+  const result = await send({ type: "removeGrantedSite", origins: [origin] });
+  if (result.ok) await onRemoved();
+}
+
+async function readFileText(file: File): Promise<string> {
+  if (typeof file.text === "function") return file.text();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
 }

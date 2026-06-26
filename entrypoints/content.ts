@@ -3,23 +3,26 @@ import type { WebStorageCommand, WebStorageSnapshot } from "../src/domain/models
 export default defineContentScript({
   matches: ["http://*/*", "https://*/*"],
   main() {
-    browser.runtime.onMessage.addListener((message: WebStorageCommand) => {
+    chrome.runtime.onMessage.addListener((message: WebStorageCommand, _sender, sendResponse) => {
       if (message.type === "readWebStorage") {
-        return snapshotStorage(location.origin);
+        sendResponse(snapshotStorage(location.origin));
+        return true;
       }
       if (message.type === "clearWebStorage") {
         localStorage.clear();
         sessionStorage.clear();
-        return { ok: true };
+        sendResponse({ ok: true });
+        return true;
       }
       if (message.type === "writeWebStorage") {
         if (message.snapshot.origin !== location.origin) {
           throw new Error("Origin mismatch");
         }
         restoreStorage(message.snapshot);
-        return { ok: true };
+        sendResponse({ ok: true });
+        return true;
       }
-      return undefined;
+      return false;
     });
   },
 });
