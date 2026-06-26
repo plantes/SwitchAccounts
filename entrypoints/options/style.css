@@ -89,6 +89,26 @@ input {
   border-top: 1px solid rgba(255, 255, 255, .08);
 }
 
+.selected {
+  border-color: rgba(234, 179, 95, .45);
+}
+
+.editor-block {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.button-row, .storage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.storage-row span {
+  min-width: 120px;
+}
+
 span, small, p, li {
   color: #cfc2ae;
 }
@@ -109,4 +129,9 @@ button {
   font-weight: 800;
   color: #14100b;
   background: #eab35f;
+}
+
+.danger {
+  color: #22100c;
+  background: #ff8167;
 }
