@@ -40,7 +40,7 @@ function dispatch(operations: Operations, request: BackgroundRequest): Promise<O
     case "listAllProfiles":
       return operations.listAllProfiles();
     case "createProfile":
-      return operations.createProfile(request.tabId, request.name, request.note);
+      return operations.createProfile(request.tabId, request.name);
     case "overwriteProfile":
       return operations.overwriteProfile(request.tabId, request.profileId);
     case "switchProfile":

@@ -194,7 +194,6 @@ describe("ExportBundleSchema", () => {
         id: crypto.randomUUID(),
         name: "A",
         normalizedName: "a",
-        note: "",
         registrableDomain: "example.com",
         cookies: [{
           name: "sid", value: "secret", domain: ".example.com",
@@ -389,7 +388,7 @@ Expected: FAIL。
 
 - [ ] **Step 4: 实现纯函数**
 
-`cookies.ts` 实现 `fromChromeCookie`、`toSetDetails`、`cookieRemovalUrl`、`validateCookieDomain`。`profiles.ts` 实现名称规范化、唯一性、空快照检测和只匹配名称/备注的搜索。
+`cookies.ts` 实现 `fromChromeCookie`、`toSetDetails`、`cookieRemovalUrl`、`validateCookieDomain`。`profiles.ts` 实现名称规范化、唯一性、空快照检测和只匹配名称的搜索。
 
 - [ ] **Step 5: 实现 Content Script**
 
@@ -519,7 +518,7 @@ constructor(private readonly deps: {
 }) {}
 ```
 
-`createProfile` 和 `overwriteProfile` 必须在锁内依次完成权限检查、Cookie 读取、Web Storage 读取、规范化、空快照保护和一次持久化。覆盖保留 `id/name/note/createdAt`。
+`createProfile` 和 `overwriteProfile` 必须在锁内依次完成权限检查、Cookie 读取、Web Storage 读取、规范化、空快照保护和一次持久化。覆盖保留 `id/name/createdAt`。
 
 - [ ] **Step 4: 验证并提交**
 
@@ -688,7 +687,7 @@ git commit -m "feat: route validated background messages"
 
 - [ ] **Step 1: 写 UI 失败测试**
 
-覆盖无账号、有账号、名称/备注搜索、未授权、特殊页面、进行中禁用、新增表单，以及切换/覆盖/删除/重置确认。测试错误详情不会渲染模拟 secret。
+覆盖无账号、有账号、名称搜索、未授权、特殊页面、进行中禁用、新增表单，以及切换/覆盖/删除/重置确认。测试错误详情不会渲染模拟 secret。
 
 - [ ] **Step 2: 运行测试确认失败**
 
@@ -733,7 +732,7 @@ git commit -m "feat: add popup account actions"
 
 - [ ] **Step 1: 写管理页失败测试**
 
-覆盖按网站/账号/备注搜索、重命名唯一性、备注修改、Cookie 名称/域名/路径搜索、Cookie 校验、Web Storage 编辑不跨 origin、导入摘要、冲突数量和明文导出警告。
+覆盖按网站/账号搜索、重命名唯一性、Cookie 名称/域名/路径搜索、Cookie 校验、Web Storage 编辑不跨 origin、导入摘要、冲突数量和明文导出警告。
 
 - [ ] **Step 2: 运行测试确认失败**
 

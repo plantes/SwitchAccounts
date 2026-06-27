@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1 as const;
+export const SCHEMA_VERSION = 2 as const;
 
 export interface SiteScope {
   registrableDomain: string;
@@ -37,7 +37,6 @@ export interface AccountProfile {
   id: string;
   name: string;
   normalizedName: string;
-  note: string;
   registrableDomain: string;
   cookies: CookieSnapshot[];
   webStorageByOrigin: Record<string, WebStorageSnapshot>;
@@ -77,7 +76,7 @@ export interface CurrentSiteData {
 export type BackgroundRequest =
   | { type: "getCurrentSite"; tabId: number }
   | { type: "listProfiles"; registrableDomain: string }
-  | { type: "createProfile"; tabId: number; name: string; note?: string }
+  | { type: "createProfile"; tabId: number; name: string }
   | { type: "overwriteProfile"; tabId: number; profileId: string }
   | { type: "switchProfile"; tabId: number; profileId: string }
   | { type: "deleteProfile"; profileId: string }

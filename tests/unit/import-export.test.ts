@@ -11,7 +11,6 @@ const baseProfile: AccountProfile = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Work",
   normalizedName: "work",
-  note: "",
   registrableDomain: "example.com",
   cookies: [],
   webStorageByOrigin: {},
@@ -19,7 +18,7 @@ const baseProfile: AccountProfile = {
   updatedAt: "2026-06-26T00:00:00.000Z",
 };
 
-const repo: ProfileRepository = { schemaVersion: 1, profiles: [baseProfile] };
+const repo: ProfileRepository = { schemaVersion: 2, profiles: [baseProfile] };
 
 describe("import-export", () => {
   it("按站点和账号筛选导出", () => {
@@ -30,14 +29,14 @@ describe("import-export", () => {
   it("构造带格式版本和时间的导出包", () => {
     expect(buildExportBundle(repo.profiles, "2026-06-26T00:00:00.000Z")).toMatchObject({
       format: "switchaccounts",
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: "2026-06-26T00:00:00.000Z",
     });
   });
 
   it("预览导入新增和覆盖数量", () => {
     const incoming = buildExportBundle([
-      { ...baseProfile, note: "覆盖" },
+      { ...baseProfile },
       {
         ...baseProfile,
         id: "00000000-0000-4000-8000-000000000002",
@@ -51,7 +50,15 @@ describe("import-export", () => {
       sites: ["example.com"],
     });
     expect(mergeImport(repo, incoming).profiles).toHaveLength(2);
-    expect(mergeImport(repo, incoming).profiles.find((p) => p.normalizedName === "work")?.note).toBe("覆盖");
+  });
+
+  it("拒绝含旧字段的导出包", () => {
+    expect(() => previewImport(repo, {
+      format: "switchaccounts",
+      schemaVersion: 2,
+      exportedAt: "2026-06-26T00:00:00.000Z",
+      profiles: [{ ...baseProfile, ["no" + "te"]: "legacy" }],
+    })).toThrow();
   });
 
   it("任一非法配置导致整批拒绝", () => {

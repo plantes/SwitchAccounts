@@ -22,7 +22,6 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
   const [profiles, setProfiles] = useState<AccountProfile[]>([]);
   const [query, setQuery] = useState("");
   const [name, setName] = useState("");
-  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -77,10 +76,9 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
 
   async function createProfile(event: React.FormEvent) {
     event.preventDefault();
-    const saved = await run({ type: "createProfile", tabId, name, note });
+    const saved = await run({ type: "createProfile", tabId, name });
     if (saved) {
       setName("");
-      setNote("");
     }
   }
 
@@ -112,10 +110,6 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
                 账号名称
                 <input value={name} onChange={(event) => setName(event.target.value)} required />
               </label>
-              <label>
-                备注
-                <input value={note} onChange={(event) => setNote(event.target.value)} />
-              </label>
               <button disabled={busy || !name.trim()} type="submit">新增账号</button>
             </form>
           </section>
@@ -129,14 +123,13 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
             <section className="panel">
               <label>
                 搜索账号
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名称或备注" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名称" />
               </label>
               <div className="profile-list">
                 {visibleProfiles.map((profile) => (
                   <article key={profile.id} className="profile-card">
                     <div>
                       <strong>{profile.name}</strong>
-                      <small>{profile.note || "无备注"}</small>
                     </div>
                     <div className="actions">
                       <button disabled={busy} aria-label={`切换 ${profile.name}`} onClick={() => {

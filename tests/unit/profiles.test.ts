@@ -16,7 +16,6 @@ const profile: AccountProfile = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "工作账号",
   normalizedName: "工作账号",
-  note: "团队",
   registrableDomain: "example.com",
   cookies: [],
   webStorageByOrigin: {},
@@ -34,7 +33,7 @@ describe("profile rules", () => {
     expect(isEmptySnapshot([], { ...storage, localStorage: { account: "a" } })).toBe(false);
   });
 
-  it("搜索名称和备注但不搜索敏感值", () => {
+  it("搜索只匹配名称且不搜索敏感值", () => {
     const withSecret = {
       ...profile,
       cookies: [{
@@ -43,7 +42,8 @@ describe("profile rules", () => {
         sameSite: "lax" as const, session: true, storeId: "0",
       }],
     };
-    expect(searchProfiles([withSecret], "团队")).toHaveLength(1);
+    expect(searchProfiles([withSecret], "工作")).toHaveLength(1);
+    expect(searchProfiles([withSecret], "团队")).toEqual([]);
     expect(searchProfiles([withSecret], "secret-cookie-value")).toEqual([]);
   });
 });
