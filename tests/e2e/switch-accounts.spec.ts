@@ -9,14 +9,14 @@ test("saves, switches, resets, exports and imports browser login states", async 
   const tabId = await extension.tabIdFor(`example.test:${site.port}`);
   await waitForContentScript(extension, tabId);
 
-  const createdA = await extension.send<AccountProfile>({ type: "createProfile", tabId, name: "Account A", note: "first" });
+  const createdA = await extension.send<AccountProfile>({ type: "createProfile", tabId, name: "Account A" });
   expect(createdA.ok).toBe(true);
   if (!createdA.ok) throw new Error(createdA.error.message);
 
   await setAccount(page, site.url("/set?account=B"));
   await page.goto(site.url("/state"));
 
-  const createdB = await extension.send<AccountProfile>({ type: "createProfile", tabId, name: "Account B", note: "second" });
+  const createdB = await extension.send<AccountProfile>({ type: "createProfile", tabId, name: "Account B" });
   expect(createdB.ok).toBe(true);
   if (!createdB.ok) throw new Error(createdB.error.message);
 

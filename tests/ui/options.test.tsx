@@ -8,7 +8,6 @@ const profile: AccountProfile = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Work",
   normalizedName: "work",
-  note: "团队",
   registrableDomain: "example.com",
   cookies: [{
     name: "sid",
@@ -38,7 +37,6 @@ const homeProfile: AccountProfile = {
   id: "00000000-0000-4000-8000-000000000002",
   name: "Home",
   normalizedName: "home",
-  note: "个人",
   registrableDomain: "example.org",
   cookies: [],
   webStorageByOrigin: {},
@@ -57,6 +55,8 @@ describe("OptionsApp", () => {
     });
     render(<OptionsApp send={send} />);
     expect(await screen.findByText("example.com")).toBeInTheDocument();
+    expect(screen.queryByText("无" + "备" + "注")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("备" + "注")).not.toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("管理页搜索"), "secret-cookie-value");
     await waitFor(() => expect(screen.queryByText("Work")).not.toBeInTheDocument());
   });
@@ -147,7 +147,7 @@ describe("OptionsApp v1 管理能力", () => {
     };
     const bundle = {
       format: "switchaccounts",
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: "2026-06-26T00:00:00.000Z",
       profiles: [profile, incomingProfile],
     };

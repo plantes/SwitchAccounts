@@ -78,7 +78,7 @@ SwitchAccounts 是一个 Chrome 扩展，用于保存网站的不同登录状态
 
 1. **账号配置**
    - 按网站查看账号。
-   - 新建、重命名、修改备注和删除账号。
+   - 新建、重命名和删除账号。
    - 查看 Cookie、localStorage、sessionStorage 项目数量。
 2. **Cookie 编辑器**
    - 仅编辑已保存账号快照，不直接修改当前网站 Cookie。
@@ -93,8 +93,8 @@ SwitchAccounts 是一个 Chrome 扩展，用于保存网站的不同登录状态
 
 ### 3.3 搜索
 
-- 弹窗按账号名称和备注搜索。
-- 管理页按网站、账号名称和备注搜索。
+- 弹窗按账号名称搜索。
+- 管理页按网站和账号名称搜索。
 - Cookie 编辑器按 Cookie 名称、域名和路径搜索。
 - 普通搜索不匹配 Cookie 值，避免敏感凭证意外出现在结果或搜索建议中。
 
@@ -116,7 +116,7 @@ SwitchAccounts 是一个 Chrome 扩展，用于保存网站的不同登录状态
 ### 4.2 新增账号
 
 1. 用户点击“新增账号”。
-2. 输入必填名称和可选备注。
+2. 输入必填名称。
 3. 插件读取注册域及子域 Cookie。
 4. 插件读取当前 origin 的 localStorage 和 sessionStorage。
 5. 插件规范化并校验快照。
@@ -142,7 +142,7 @@ SwitchAccounts 是一个 Chrome 扩展，用于保存网站的不同登录状态
 覆盖时：
 
 - 目标配置注册域必须与当前页面注册域一致。
-- 保留账号 ID、名称、备注和创建时间。
+- 保留账号 ID、名称和创建时间。
 - 更新 Cookie、Web Storage 和修改时间。
 - 不清理、不刷新、不切换当前网页。
 - 持久化失败时保留旧快照。
@@ -398,7 +398,6 @@ export interface AccountProfile {
   id: string;
   name: string;
   normalizedName: string;
-  note: string;
   registrableDomain: string;
   cookies: CookieSnapshot[];
   webStorageByOrigin: Record<string, WebStorageSnapshot>;
@@ -427,7 +426,7 @@ export interface ExportBundle {
 export type BackgroundRequest =
   | { type: "getCurrentSite"; tabId: number }
   | { type: "listProfiles"; registrableDomain: string }
-  | { type: "createProfile"; tabId: number; name: string; note?: string }
+  | { type: "createProfile"; tabId: number; name: string }
   | { type: "overwriteProfile"; tabId: number; profileId: string }
   | { type: "switchProfile"; tabId: number; profileId: string }
   | { type: "deleteProfile"; profileId: string }

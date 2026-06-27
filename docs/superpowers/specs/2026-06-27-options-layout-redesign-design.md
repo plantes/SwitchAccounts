@@ -35,7 +35,7 @@
 
 右侧标签页包括：
 
-- `概览`：账号名称、备注、统计信息、保存和删除账号。
+- `概览`：账号名称、统计信息、保存和删除账号。
 - `Cookie`：Cookie 搜索、Cookie 列表和单条 Cookie 编辑。
 - `Web Storage`：按 origin 和 storage kind 分组的 Storage 条目编辑。
 - `工具`：导入导出、授权站点管理、数据格式版本和敏感数据警告。
@@ -89,12 +89,12 @@
 
 ### 5.1 搜索与账号选择
 
-左侧搜索继续按网站、账号名称、备注过滤账号，不匹配 Cookie 值或 Web Storage 值。
+左侧搜索继续按网站和账号名称过滤账号，不匹配 Cookie 值或 Web Storage 值。
 
 账号列表项展示：
 
 - registrable domain。
-- 账号名称和备注。
+- 账号名称。
 - Cookie 数量。
 - Origin 数量。
 
@@ -105,7 +105,6 @@
 概览标签负责账号级信息：
 
 - 账号名称输入框。
-- 备注输入框。
 - Cookie / Origin 统计。
 - 保存账号信息按钮。
 - 删除账号按钮。
@@ -168,7 +167,7 @@ Storage 条目编辑仍只更新保存快照，不直接修改当前网站。
 - `AccountSidebar`：搜索、账号列表、账号选择。
 - `AccountSummary`：右侧顶部当前账号摘要。
 - `Tabs`：标签导航。
-- `OverviewTab`：账号名称、备注、统计和账号级操作。
+- `OverviewTab`：账号名称、统计和账号级操作。
 - `CookieTab`：Cookie 搜索和列表。
 - `CookieEditorRow`：单条 Cookie 编辑。
 - `WebStorageTab`：origin / kind 分组。

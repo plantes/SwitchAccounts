@@ -18,7 +18,6 @@ const profile: AccountProfile = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Work",
   normalizedName: "work",
-  note: "团队",
   registrableDomain: "example.com",
   cookies: [],
   webStorageByOrigin: {},
@@ -40,9 +39,10 @@ describe("PopupApp", () => {
     });
     render(<PopupApp tabId={1} send={send} />);
     expect(await screen.findByText("暂无账号配置")).toBeInTheDocument();
+    expect(screen.queryByLabelText("备" + "注")).not.toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("账号名称"), "Work");
     await userEvent.click(screen.getByRole("button", { name: "新增账号" }));
-    await waitFor(() => expect(send).toHaveBeenCalledWith({ type: "createProfile", tabId: 1, name: "Work", note: "" }));
+    await waitFor(() => expect(send).toHaveBeenCalledWith({ type: "createProfile", tabId: 1, name: "Work" }));
   });
 
   it("有账号时支持搜索、切换、覆盖、删除和重置确认", async () => {
@@ -54,7 +54,8 @@ describe("PopupApp", () => {
     });
     render(<PopupApp tabId={1} send={send} />);
     expect(await screen.findByText("Work")).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText("搜索账号"), "团队");
+    expect(screen.queryByText("无" + "备" + "注")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("搜索账号"), "Work");
     await userEvent.click(screen.getByRole("button", { name: "切换 Work" }));
     await userEvent.click(screen.getByRole("button", { name: "覆盖 Work" }));
     await userEvent.click(screen.getByRole("button", { name: "删除 Work" }));
@@ -102,6 +103,6 @@ describe("PopupApp error recovery", () => {
     await user.click(screen.getByRole("button", { name: "新增账号" }));
 
     await waitFor(() => expect(requestPermission).toHaveBeenCalledWith(site.scope.permissionOrigins));
-    expect(send).toHaveBeenCalledWith({ type: "createProfile", tabId: 1, name: "Work", note: "" });
+    expect(send).toHaveBeenCalledWith({ type: "createProfile", tabId: 1, name: "Work" });
   });
 });

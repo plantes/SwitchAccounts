@@ -14,8 +14,7 @@ export function searchProfiles(profiles: AccountProfile[], query: string): Accou
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return profiles;
   return profiles.filter((profile) =>
-    profile.name.toLocaleLowerCase().includes(needle)
-    || profile.note.toLocaleLowerCase().includes(needle));
+    profile.name.toLocaleLowerCase().includes(needle));
 }
 
 export function hasDuplicateName(

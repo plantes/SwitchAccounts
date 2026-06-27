@@ -25,7 +25,7 @@ function makeDeps(options: {
   failSetCookie?: boolean;
   failWriteStorage?: boolean;
 } = {}) {
-  let repository = options.repository ?? { schemaVersion: 1 as const, profiles: [] };
+  let repository = options.repository ?? { schemaVersion: 2 as const, profiles: [] };
   const calls: string[] = [];
   const sendTabMessage: ChromeAdapter["sendTabMessage"] = async <T,>(
     _tabId: number,
@@ -78,7 +78,6 @@ function profile(): AccountProfile {
     id: "00000000-0000-4000-8000-000000000001",
     name: "Work",
     normalizedName: "work",
-    note: "",
     registrableDomain: "example.com",
     cookies: [{
       name: "sid",
@@ -115,14 +114,14 @@ describe("BackgroundOperations", () => {
   });
 
   it("删除账号不清理网站状态", async () => {
-    const { ops, calls } = makeDeps({ repository: { schemaVersion: 1, profiles: [profile()] } });
+    const { ops, calls } = makeDeps({ repository: { schemaVersion: 2, profiles: [profile()] } });
     await expect(ops.deleteProfile(profile().id)).resolves.toMatchObject({ ok: true });
     expect(calls).toEqual([]);
   });
 
   it("切换成功按清理、恢复、刷新顺序执行", async () => {
     const { ops, calls } = makeDeps({
-      repository: { schemaVersion: 1, profiles: [profile()] },
+      repository: { schemaVersion: 2, profiles: [profile()] },
       cookies: [profile().cookies[0] as unknown as chrome.cookies.Cookie],
     });
     await expect(ops.switchProfile(1, profile().id)).resolves.toMatchObject({ ok: true });
@@ -136,7 +135,7 @@ describe("BackgroundOperations", () => {
   });
 
   it("Cookie 写入失败后二次清理且不刷新", async () => {
-    const { ops, calls } = makeDeps({ repository: { schemaVersion: 1, profiles: [profile()] }, failSetCookie: true });
+    const { ops, calls } = makeDeps({ repository: { schemaVersion: 2, profiles: [profile()] }, failSetCookie: true });
     await expect(ops.switchProfile(1, profile().id)).resolves.toMatchObject({
       ok: false,
       error: { code: "COOKIE_WRITE_FAILED" },
@@ -145,7 +144,7 @@ describe("BackgroundOperations", () => {
   });
 
   it("重置成功清理并刷新但不改仓库", async () => {
-    const existing = { schemaVersion: 1 as const, profiles: [profile()] };
+    const existing = { schemaVersion: 2 as const, profiles: [profile()] };
     const { ops, calls, getRepository } = makeDeps({ repository: existing });
     await expect(ops.resetSite(1)).resolves.toMatchObject({ ok: true });
     expect(calls).toEqual(["clearWebStorage", "reload"]);

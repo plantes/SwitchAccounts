@@ -45,7 +45,7 @@ export class BackgroundOperations {
     return ok((await this.deps.repository.load()).profiles);
   }
 
-  async createProfile(tabId: number, rawName: string, note = ""): Promise<OperationResult<AccountProfile>> {
+  async createProfile(tabId: number, rawName: string): Promise<OperationResult<AccountProfile>> {
     const scopeResult = await this.resolveScopeFromTab(tabId);
     if (!scopeResult.ok) return scopeResult;
     const scope = scopeResult.data;
@@ -71,7 +71,6 @@ export class BackgroundOperations {
         id: this.deps.uuid(),
         name,
         normalizedName: normalizeProfileName(name),
-        note,
         registrableDomain: scope.registrableDomain,
         cookies: snapshot.data.cookies,
         webStorageByOrigin: { [scope.currentOrigin]: snapshot.data.webStorage },

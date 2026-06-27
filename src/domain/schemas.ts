@@ -41,7 +41,6 @@ export const AccountProfileSchema = z.strictObject({
   id: z.string().uuid(),
   name: z.string().trim().min(1),
   normalizedName: z.string().min(1),
-  note: z.string(),
   registrableDomain: z.string().min(1),
   cookies: z.array(CookieSnapshotSchema),
   webStorageByOrigin: z.record(z.string(), WebStorageSnapshotSchema),
@@ -64,13 +63,13 @@ export const AccountProfileSchema = z.strictObject({
 });
 
 export const ProfileRepositorySchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   profiles: z.array(AccountProfileSchema),
 });
 
 export const ExportBundleSchema = z.strictObject({
   format: z.literal("switchaccounts"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   exportedAt: IsoDateSchema,
   profiles: z.array(AccountProfileSchema),
 });
@@ -84,7 +83,7 @@ export const ExportScopeSchema = z.discriminatedUnion("type", [
 export const BackgroundRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("getCurrentSite"), tabId: z.number().int().nonnegative() }),
   z.strictObject({ type: z.literal("listProfiles"), registrableDomain: z.string().min(1) }),
-  z.strictObject({ type: z.literal("createProfile"), tabId: z.number().int().nonnegative(), name: z.string().min(1), note: z.string().optional() }),
+  z.strictObject({ type: z.literal("createProfile"), tabId: z.number().int().nonnegative(), name: z.string().min(1) }),
   z.strictObject({ type: z.literal("overwriteProfile"), tabId: z.number().int().nonnegative(), profileId: z.string().uuid() }),
   z.strictObject({ type: z.literal("switchProfile"), tabId: z.number().int().nonnegative(), profileId: z.string().uuid() }),
   z.strictObject({ type: z.literal("deleteProfile"), profileId: z.string().uuid() }),

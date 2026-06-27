@@ -5,7 +5,6 @@ const validProfile = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "A",
   normalizedName: "a",
-  note: "",
   registrableDomain: "example.com",
   cookies: [],
   webStorageByOrigin: {},
@@ -17,16 +16,32 @@ describe("ExportBundleSchema", () => {
   it("拒绝未知格式版本", () => {
     expect(ExportBundleSchema.safeParse({
       format: "switchaccounts",
-      schemaVersion: 2,
+      schemaVersion: 3,
       exportedAt: new Date().toISOString(),
       profiles: [],
+    }).success).toBe(false);
+  });
+
+  it("拒绝旧版本和旧账号字段", () => {
+    expect(ExportBundleSchema.safeParse({
+      format: "switchaccounts",
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      profiles: [validProfile],
+    }).success).toBe(false);
+
+    expect(ExportBundleSchema.safeParse({
+      format: "switchaccounts",
+      schemaVersion: 2,
+      exportedAt: new Date().toISOString(),
+      profiles: [{ ...validProfile, ["no" + "te"]: "" }],
     }).success).toBe(false);
   });
 
   it("拒绝 SameSite=None 且 Secure=false 的 Cookie", () => {
     const result = ExportBundleSchema.safeParse({
       format: "switchaccounts",
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: new Date().toISOString(),
       profiles: [{
         ...validProfile,
@@ -43,7 +58,7 @@ describe("ExportBundleSchema", () => {
   it("拒绝 Web Storage key 与 origin 不一致", () => {
     const result = ExportBundleSchema.safeParse({
       format: "switchaccounts",
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: new Date().toISOString(),
       profiles: [{
         ...validProfile,

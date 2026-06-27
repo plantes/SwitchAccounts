@@ -17,14 +17,14 @@ function makeStorage(initial?: ProfileRepository, failSet = false) {
 describe("ChromeProfileRepository", () => {
   it("空存储返回空仓库", async () => {
     const repo = new ChromeProfileRepository(makeStorage());
-    await expect(repo.load()).resolves.toEqual({ schemaVersion: 1, profiles: [] });
+    await expect(repo.load()).resolves.toEqual({ schemaVersion: 2, profiles: [] });
   });
 
   it("写入失败时不改变已有仓库", async () => {
-    const initial = { schemaVersion: 1 as const, profiles: [] };
+    const initial = { schemaVersion: 2 as const, profiles: [] };
     const storage = makeStorage(initial, true);
     const repo = new ChromeProfileRepository(storage);
-    await expect(repo.save({ schemaVersion: 1, profiles: [] })).rejects.toMatchObject({
+    await expect(repo.save({ schemaVersion: 2, profiles: [] })).rejects.toMatchObject({
       code: "STORAGE_WRITE_FAILED",
     });
     expect(storage.current()).toBe(initial);

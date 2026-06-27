@@ -45,8 +45,7 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
     const needle = query.trim().toLocaleLowerCase();
     if (!needle) return byName;
     return byName.filter((profile) => profile.registrableDomain.toLocaleLowerCase().includes(needle)
-      || profile.name.toLocaleLowerCase().includes(needle)
-      || profile.note.toLocaleLowerCase().includes(needle));
+      || profile.name.toLocaleLowerCase().includes(needle));
   }, [profiles, query]);
 
   const selected = filtered.find((profile) => profile.id === selectedId) ?? filtered[0];
@@ -137,7 +136,7 @@ function AccountSidebar({ profiles, query, selectedId, onQueryChange, onSelect, 
 
       <label className="search-box">
         管理页搜索
-        <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="网站、账号名称或备注" />
+        <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="网站或账号名称" />
       </label>
 
       <div className="profile-list" aria-label="账号列表">
@@ -150,7 +149,7 @@ function AccountSidebar({ profiles, query, selectedId, onQueryChange, onSelect, 
           >
             <span className="profile-domain">{profile.registrableDomain}</span>
             <strong>{profile.name}</strong>
-            <small>{profile.note || "无备注"} · {profile.cookies.length} Cookies · {Object.keys(profile.webStorageByOrigin).length} Origins</small>
+            <small>{profile.cookies.length} Cookies · {Object.keys(profile.webStorageByOrigin).length} Origins</small>
           </button>
         ))}
         {profiles.length === 0 && <p className="muted">没有匹配的账号。</p>}
@@ -204,17 +203,15 @@ function TabPanel({ id, label, children }: { id: ActiveTab; label: string; child
 
 function OverviewTab({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
   const [name, setName] = useState(profile.name);
-  const [note, setNote] = useState(profile.note);
 
   useEffect(() => {
     setName(profile.name);
-    setNote(profile.note);
-  }, [profile.id, profile.name, profile.note]);
+  }, [profile.id, profile.name]);
 
   async function save() {
     await send({
       type: "updateProfile",
-      profile: { ...profile, name: name.trim(), normalizedName: normalizeProfileName(name), note, updatedAt: new Date().toISOString() },
+      profile: { ...profile, name: name.trim(), normalizedName: normalizeProfileName(name), updatedAt: new Date().toISOString() },
     });
     await onSaved();
   }
@@ -228,7 +225,6 @@ function OverviewTab({ profile, send, onSaved }: { profile: AccountProfile; send
   return (
     <div className="overview-grid">
       <label>账号名称<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>备注<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
       <div className="stat-card">
         <strong>{profile.cookies.length}</strong>
         <span>Cookies</span>
