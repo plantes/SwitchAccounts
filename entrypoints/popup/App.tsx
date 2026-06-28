@@ -110,7 +110,19 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
         </div>
       </header>
 
-      {error && <div role="alert" className="notice danger">{error}</div>}
+      {error && (
+        <div role="alert" className="notice floating-alert">
+          <span className="notice-message">{error}</span>
+          <button
+            type="button"
+            className="notice-close"
+            aria-label="关闭错误提示"
+            onClick={() => setError("")}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {site && (
         <>

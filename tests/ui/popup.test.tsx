@@ -118,6 +118,30 @@ describe("PopupApp", () => {
   });
 });
 
+describe("PopupApp floating errors", () => {
+  it("allows dismissing the floating popup error", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "getCurrentSite") return result(site);
+      if (request.type === "listProfiles") return result([]);
+      if (request.type === "createProfile") throw new Error("Cookie write failed");
+      return result({});
+    });
+    render(<PopupApp tabId={1} send={send} />);
+
+    await screen.findByText("暂无账号快照");
+    await userEvent.type(screen.getByLabelText("账号名称"), "Work");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveClass("floating-alert");
+    expect(alert).toHaveTextContent("Cookie write failed");
+
+    await userEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
 describe("PopupApp error recovery", () => {
   it("保存账号消息异常时显示错误并恢复按钮", async () => {
     const send = vi.fn(async (request) => {

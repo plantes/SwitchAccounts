@@ -286,10 +286,61 @@ button:disabled {
 }
 
 .notice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
   padding: 10px;
   color: #ffd2c8;
   border-color: rgba(255, 128, 104, .36);
   background: rgba(255, 128, 104, .08);
+}
+
+.floating-alert {
+  position: fixed;
+  z-index: 50;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  max-height: 118px;
+  overflow-y: auto;
+  background:
+    linear-gradient(135deg, rgba(255, 128, 104, .19), rgba(27, 18, 16, .94)),
+    rgba(18, 15, 14, .96);
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, .36),
+    0 0 0 1px rgba(255, 128, 104, .08);
+}
+
+.notice-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.42;
+}
+
+.notice-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  border: 1px solid rgba(255, 210, 200, .2);
+  border-radius: 999px;
+  padding: 0;
+  color: #ffd2c8;
+  background: rgba(255, 255, 255, .08);
+  box-shadow: none;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.notice-close:not(:disabled):hover {
+  color: #170f0d;
+  background: #ffd2c8;
+  box-shadow: 0 7px 16px rgba(255, 128, 104, .18);
 }
 
 .profile-list {
@@ -417,6 +468,11 @@ button:disabled {
 @media (max-width: 350px) {
   .popup-shell {
     padding: 10px;
+  }
+
+  .floating-alert {
+    left: 10px;
+    right: 10px;
   }
 
   .site-action,
