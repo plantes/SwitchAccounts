@@ -60,10 +60,26 @@ describe("PopupApp", () => {
     });
     render(<PopupApp tabId={1} send={send} />);
 
-    expect(await screen.findByText("Work")).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "修改账号标题 Work" })).toHaveValue("Work");
     expect(screen.getByText("2026-06-26 00:00")).toBeInTheDocument();
     expect(screen.queryByText("添加时间")).not.toBeInTheDocument();
     expect(screen.queryByText("已授权")).not.toBeInTheDocument();
+
+    const switchButton = screen.getByRole("button", { name: "切换 Work" });
+    const overwriteButton = screen.getByRole("button", { name: "覆盖 Work" });
+    const deleteButton = screen.getByRole("button", { name: "删除 Work" });
+    expect(switchButton).not.toHaveAttribute("title");
+    expect(overwriteButton).not.toHaveAttribute("title");
+    expect(deleteButton).not.toHaveAttribute("title");
+
+    await userEvent.hover(switchButton);
+    expect(screen.getByRole("tooltip", { name: "使用此账号" })).toBeInTheDocument();
+    await userEvent.unhover(switchButton);
+    await userEvent.hover(overwriteButton);
+    expect(screen.getByRole("tooltip", { name: "覆盖已存储的快照" })).toBeInTheDocument();
+    await userEvent.unhover(overwriteButton);
+    await userEvent.hover(deleteButton);
+    expect(screen.queryByRole("tooltip", { name: "无" })).not.toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText("搜索账号"), "Work");
     await userEvent.click(screen.getByRole("button", { name: "切换 Work" }));
@@ -75,6 +91,30 @@ describe("PopupApp", () => {
     expect(send).toHaveBeenCalledWith({ type: "overwriteProfile", tabId: 1, profileId: profile.id });
     expect(send).toHaveBeenCalledWith({ type: "deleteProfile", profileId: profile.id });
     expect(send).toHaveBeenCalledWith({ type: "resetSite", tabId: 1 });
+  });
+
+  it("允许直接在 popup 修改账号标题", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "getCurrentSite") return result(site);
+      if (request.type === "listProfiles") return result([profile]);
+      if (request.type === "updateProfile") return result(request.profile);
+      return result({});
+    });
+    render(<PopupApp tabId={1} send={send} />);
+
+    const title = await screen.findByRole("textbox", { name: "修改账号标题 Work" });
+    await userEvent.click(title);
+    await userEvent.keyboard("{Control>}a{/Control}");
+    await userEvent.keyboard("小号 月卡 18号{Enter}");
+
+    await waitFor(() => expect(send).toHaveBeenCalledWith({
+      type: "updateProfile",
+      profile: expect.objectContaining({
+        id: profile.id,
+        name: "小号 月卡 18号",
+        normalizedName: "小号 月卡 18号",
+      }),
+    }));
   });
 });
 

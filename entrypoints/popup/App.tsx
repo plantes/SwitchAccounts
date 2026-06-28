@@ -5,7 +5,7 @@ import type {
   CurrentSiteData,
   OperationResult,
 } from "../../src/domain/models";
-import { searchProfiles } from "../../src/domain/profiles";
+import { normalizeProfileName, searchProfiles } from "../../src/domain/profiles";
 import { sendBackground } from "../../src/ui/client";
 import { toSafeErrorText } from "../../src/ui/errors";
 import "./style.css";
@@ -82,6 +82,20 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
     }
   }
 
+  async function renameProfile(profile: AccountProfile, rawName: string): Promise<boolean> {
+    const nextName = rawName.trim();
+    if (!nextName || nextName === profile.name) return false;
+    return run({
+      type: "updateProfile",
+      profile: {
+        ...profile,
+        name: nextName,
+        normalizedName: normalizeProfileName(nextName),
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  }
+
   if (!site && !error) {
     return <main className="popup-shell loading">加载当前站点…</main>;
   }
@@ -141,25 +155,25 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
                 {visibleProfiles.map((profile) => (
                   <article key={profile.id} className="profile-card">
                     <div className="profile-head">
-                      <strong>{profile.name}</strong>
+                      <ProfileTitleInput profile={profile} disabled={busy} onSave={renameProfile} />
                       <span className="profile-time">{formatProfileTime(profile.createdAt)}</span>
                     </div>
                     <div className="actions">
-                      <button disabled={busy} aria-label={`切换 ${profile.name}`} onClick={() => {
+                      <TooltipButton disabled={busy} ariaLabel={`切换 ${profile.name}`} tooltip="使用此账号" onClick={() => {
                         if (window.confirm(`切换到 ${profile.name}？当前网站状态会先被清空。`)) {
                           void run({ type: "switchProfile", tabId, profileId: profile.id }, false);
                         }
-                      }}>切换</button>
-                      <button disabled={busy} className="secondary" aria-label={`覆盖 ${profile.name}`} onClick={() => {
+                      }}>切换</TooltipButton>
+                      <TooltipButton disabled={busy} className="secondary" ariaLabel={`覆盖 ${profile.name}`} tooltip="覆盖已存储的快照" onClick={() => {
                         if (window.confirm(`用当前网站状态覆盖 ${profile.name}？`)) {
                           void run({ type: "overwriteProfile", tabId, profileId: profile.id });
                         }
-                      }}>覆盖</button>
-                      <button disabled={busy} className="danger" aria-label={`删除 ${profile.name}`} onClick={() => {
+                      }}>覆盖</TooltipButton>
+                      <TooltipButton disabled={busy} className="danger" ariaLabel={`删除 ${profile.name}`} onClick={() => {
                         if (window.confirm(`删除 ${profile.name}？不会清理当前网站。`)) {
                           void run({ type: "deleteProfile", profileId: profile.id });
                         }
-                      }}>删除</button>
+                      }}>删除</TooltipButton>
                     </div>
                   </article>
                 ))}
@@ -169,6 +183,93 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
         </>
       )}
     </main>
+  );
+}
+
+function TooltipButton({ children, className = "", disabled, ariaLabel, tooltip, onClick }: {
+  children: React.ReactNode;
+  className?: string;
+  disabled: boolean;
+  ariaLabel: string;
+  tooltip?: string;
+  onClick: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const tooltipId = useMemo(() => `tooltip-${ariaLabel.replace(/\s+/g, "-")}`, [ariaLabel]);
+
+  function show() {
+    if (tooltip) setOpen(true);
+  }
+
+  function hide() {
+    setOpen(false);
+  }
+
+  return (
+    <span className="tooltip-button-wrap" onMouseEnter={show} onMouseLeave={hide}>
+      <button
+        disabled={disabled}
+        className={className}
+        aria-label={ariaLabel}
+        aria-describedby={open && tooltip ? tooltipId : undefined}
+        onFocus={show}
+        onBlur={hide}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+      {open && tooltip && (
+        <span id={tooltipId} role="tooltip" className="tooltip-bubble">
+          {tooltip}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ProfileTitleInput({ profile, disabled, onSave }: {
+  profile: AccountProfile;
+  disabled: boolean;
+  onSave: (profile: AccountProfile, name: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(profile.name);
+
+  useEffect(() => {
+    setDraft(profile.name);
+  }, [profile.id, profile.name]);
+
+  async function commit(value: string) {
+    const nextName = value.trim();
+    if (!nextName) {
+      setDraft(profile.name);
+      return;
+    }
+    if (nextName === profile.name) {
+      setDraft(profile.name);
+      return;
+    }
+    await onSave(profile, nextName);
+  }
+
+  return (
+    <input
+      aria-label={`修改账号标题 ${profile.name}`}
+      className="profile-title-input"
+      disabled={disabled}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={(event) => void commit(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+        if (event.key === "Escape") {
+          setDraft(profile.name);
+          event.currentTarget.blur();
+        }
+      }}
+    />
   );
 }
 
