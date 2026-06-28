@@ -30,7 +30,7 @@ function result<T>(data: T): OperationResult<T> {
 }
 
 describe("PopupApp", () => {
-  it("显示无账号状态并允许新增账号", async () => {
+  it("显示工作台空状态并允许保存当前登录状态", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "getCurrentSite") return result(site);
       if (request.type === "listProfiles") return result([]);
@@ -38,14 +38,20 @@ describe("PopupApp", () => {
       return result({});
     });
     render(<PopupApp tabId={1} send={send} />);
-    expect(await screen.findByText("暂无账号配置")).toBeInTheDocument();
+
+    expect(await screen.findByRole("heading", { name: "SwitchAccounts" })).toBeInTheDocument();
+    expect(screen.getByText("app.example.com")).toBeInTheDocument();
+    expect(screen.getByText("注册域 example.com · Cookie 覆盖全部子域")).toBeInTheDocument();
+    expect(screen.getByText("暂无账号快照")).toBeInTheDocument();
     expect(screen.queryByLabelText("备" + "注")).not.toBeInTheDocument();
+
     await userEvent.type(screen.getByLabelText("账号名称"), "Work");
-    await userEvent.click(screen.getByRole("button", { name: "新增账号" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
     await waitFor(() => expect(send).toHaveBeenCalledWith({ type: "createProfile", tabId: 1, name: "Work" }));
   });
 
-  it("有账号时支持搜索、切换、覆盖、删除和重置确认", async () => {
+  it("有账号时支持搜索、切换、覆盖、删除和登出确认", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const send = vi.fn(async (request) => {
       if (request.type === "getCurrentSite") return result(site);
@@ -53,13 +59,18 @@ describe("PopupApp", () => {
       return result({});
     });
     render(<PopupApp tabId={1} send={send} />);
+
     expect(await screen.findByText("Work")).toBeInTheDocument();
-    expect(screen.queryByText("无" + "备" + "注")).not.toBeInTheDocument();
+    expect(screen.getByText("2026-06-26 00:00")).toBeInTheDocument();
+    expect(screen.queryByText("添加时间")).not.toBeInTheDocument();
+    expect(screen.queryByText("已授权")).not.toBeInTheDocument();
+
     await userEvent.type(screen.getByLabelText("搜索账号"), "Work");
     await userEvent.click(screen.getByRole("button", { name: "切换 Work" }));
     await userEvent.click(screen.getByRole("button", { name: "覆盖 Work" }));
     await userEvent.click(screen.getByRole("button", { name: "删除 Work" }));
-    await userEvent.click(screen.getByRole("button", { name: "重置当前状态" }));
+    await userEvent.click(screen.getByRole("button", { name: "登出" }));
+
     expect(send).toHaveBeenCalledWith({ type: "switchProfile", tabId: 1, profileId: profile.id });
     expect(send).toHaveBeenCalledWith({ type: "overwriteProfile", tabId: 1, profileId: profile.id });
     expect(send).toHaveBeenCalledWith({ type: "deleteProfile", profileId: profile.id });
@@ -68,7 +79,7 @@ describe("PopupApp", () => {
 });
 
 describe("PopupApp error recovery", () => {
-  it("新增账号消息异常时显示错误并恢复按钮", async () => {
+  it("保存账号消息异常时显示错误并恢复按钮", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "getCurrentSite") return result(site);
       if (request.type === "listProfiles") return result([]);
@@ -77,15 +88,15 @@ describe("PopupApp error recovery", () => {
     });
     render(<PopupApp tabId={1} send={send} />);
 
-    await screen.findByText("暂无账号配置");
+    await screen.findByText("暂无账号快照");
     await userEvent.type(screen.getByLabelText("账号名称"), "Work");
-    await userEvent.click(screen.getByRole("button", { name: "新增账号" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("This function must be called during a user gesture");
-    expect(screen.getByRole("button", { name: "新增账号" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });
 
-  it("首次新增账号时先在 Popup 用户手势内申请站点权限", async () => {
+  it("首次保存账号时先在 Popup 用户手势内申请站点权限", async () => {
     const unauthorizedSite: CurrentSiteData = { ...site, authorized: false };
     const requestPermission = vi.fn(async () => true);
     const send = vi.fn(async (request) => {
@@ -97,10 +108,10 @@ describe("PopupApp error recovery", () => {
     render(<PopupApp tabId={1} send={send} requestPermission={requestPermission} />);
 
     const user = userEvent.setup();
-    await screen.findByText("暂无账号配置");
+    await screen.findByText("暂无账号快照");
     await user.type(screen.getByLabelText("账号名称"), "Work");
     await waitFor(() => expect(screen.getByLabelText("账号名称")).toHaveValue("Work"));
-    await user.click(screen.getByRole("button", { name: "新增账号" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(requestPermission).toHaveBeenCalledWith(site.scope.permissionOrigins));
     expect(send).toHaveBeenCalledWith({ type: "createProfile", tabId: 1, name: "Work" });

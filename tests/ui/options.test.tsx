@@ -47,6 +47,21 @@ function result<T>(data: T): OperationResult<T> {
 }
 
 describe("OptionsApp", () => {
+  it("使用 popup 工作台同款品牌栏", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "listAllProfiles") return result([profile]);
+      if (request.type === "listGrantedSites") return result([]);
+      return result({});
+    });
+    const { container } = render(<OptionsApp send={send} />);
+
+    expect(await screen.findByRole("heading", { name: "SwitchAccounts" })).toBeInTheDocument();
+    expect(screen.getByText("本地账号快照工作台")).toBeInTheDocument();
+    const mark = container.querySelector<HTMLImageElement>(".brand-mark");
+    expect(mark).not.toBeNull();
+    expect(mark?.getAttribute("src")).toBe("/icons/switchaccounts.svg");
+  });
+
   it("按网站和账号展示配置，普通搜索不匹配敏感值", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "listAllProfiles") return result([profile]);
@@ -54,9 +69,10 @@ describe("OptionsApp", () => {
       return result({});
     });
     render(<OptionsApp send={send} />);
+    expect(await screen.findByRole("heading", { name: "SwitchAccounts" })).toBeInTheDocument();
     expect(await screen.findByText("example.com")).toBeInTheDocument();
-    expect(screen.queryByText("无" + "备" + "注")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("备" + "注")).not.toBeInTheDocument();
+    expect(screen.queryByText("secret-cookie-value")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("secret-cookie-value")).not.toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("管理页搜索"), "secret-cookie-value");
     await waitFor(() => expect(screen.queryByText("Work")).not.toBeInTheDocument());
   });
@@ -76,6 +92,7 @@ describe("OptionsApp", () => {
     expect(screen.getByText(/导出文件包含可直接使用的登录凭证/)).toBeInTheDocument();
   });
 });
+
 describe("OptionsApp v1 管理能力", () => {
   it("Cookie 编辑器允许维护 SameSite 和过期时间", async () => {
     const send = vi.fn(async (request) => {
@@ -164,8 +181,8 @@ describe("OptionsApp v1 管理能力", () => {
     expect(input).not.toBeNull();
     await userEvent.upload(input!, new File([JSON.stringify(bundle)], "profiles.json", { type: "application/json" }));
 
-    expect(await screen.findByText(/新增 1/)).toBeInTheDocument();
-    expect(screen.getByText(/覆盖 1/)).toBeInTheDocument();
+    expect(await screen.findByText(/新增 1 个/)).toBeInTheDocument();
+    expect(screen.getByText(/覆盖 1 个/)).toBeInTheDocument();
     expect(screen.getByText(/涉及站点：example\.com, example\.org/)).toBeInTheDocument();
     expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: "importProfiles" }));
   });

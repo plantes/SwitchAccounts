@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="SwitchAccounts two keys icon">
+  <defs>
+    <linearGradient id="bg" x1="13" y1="10" x2="115" y2="118" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#222925"/>
+      <stop offset="1" stop-color="#0b0f10"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="24" y1="29" x2="105" y2="68" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe8ad"/>
+      <stop offset=".55" stop-color="#f4bd5d"/>
+      <stop offset="1" stop-color="#c9852f"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="21" y1="83" x2="103" y2="47" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ecf7ef"/>
+      <stop offset=".55" stop-color="#acd3b8"/>
+      <stop offset="1" stop-color="#74a889"/>
+    </linearGradient>
+    <filter id="shadow" x="-18%" y="-18%" width="136%" height="136%">
+      <feDropShadow dx="0" dy="6" stdDeviation="4" flood-color="#000" flood-opacity=".36"/>
+    </filter>
+  </defs>
+
+  <rect width="128" height="128" rx="26" fill="url(#bg)"/>
+  <path d="M20 103h88" stroke="#18201d" stroke-width="11" stroke-linecap="round" opacity=".7"/>
+
+  <g filter="url(#shadow)" stroke-linecap="round" stroke-linejoin="round">
+    <g>
+      <circle cx="36" cy="43" r="19" fill="#101516" stroke="url(#gold)" stroke-width="11"/>
+      <circle cx="36" cy="43" r="7" fill="#ffe8ad"/>
+      <path d="M56 43H99" stroke="url(#gold)" stroke-width="15"/>
+      <path d="M83 43v15" stroke="#ffe0a0" stroke-width="10"/>
+      <path d="M100 43v22" stroke="#ffe0a0" stroke-width="10"/>
+    </g>
+
+    <g>
+      <circle cx="36" cy="82" r="19" fill="#101516" stroke="url(#mint)" stroke-width="11"/>
+      <circle cx="36" cy="82" r="7" fill="#ecf7ef"/>
+      <path d="M56 82H99" stroke="url(#mint)" stroke-width="15"/>
+      <path d="M83 82v-15" stroke="#e5f2e8" stroke-width="10"/>
+      <path d="M100 82v-22" stroke="#e5f2e8" stroke-width="10"/>
+    </g>
+  </g>
+</svg>

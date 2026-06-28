@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AccountProfile, BackgroundRequest, CookieSnapshot, OperationResult, WebStorageSnapshot } from "../../src/domain/models";
 import { SCHEMA_VERSION } from "../../src/domain/models";
 import { previewImport } from "../../src/domain/import-export";
@@ -62,7 +62,7 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
       />
 
       <section className="detail-shell">
-        {error && <div role="alert" className="warning">{error}</div>}
+        {error && <div role="alert" className="notice danger">{error}</div>}
         {selected ? (
           <>
             <AccountSummary profile={selected} />
@@ -93,8 +93,8 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
         ) : activeTab === "tools" ? (
           <>
             <header className="account-summary">
-              <div>
-                <span className="eyebrow">工具</span>
+              <div className="summary-copy">
+                <span className="field-label">工具</span>
                 <h2>导入 / 导出与设置</h2>
                 <p>没有账号时也可以先导入已有配置，或查看当前授权站点。</p>
               </div>
@@ -108,7 +108,7 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
           </>
         ) : (
           <section className="empty-state">
-            <h2>{profiles.length === 0 ? "暂无账号配置" : "无匹配账号"}</h2>
+            <strong>{profiles.length === 0 ? "暂无账号配置" : "无匹配账号"}</strong>
             <p>{profiles.length === 0 ? "可以从弹窗保存当前网站状态，或在工具中导入已有配置。" : "调整搜索条件后再选择账号。"}</p>
             <button type="button" onClick={() => setActiveTab("tools")}>打开工具</button>
           </section>
@@ -128,10 +128,12 @@ function AccountSidebar({ profiles, query, selectedId, onQueryChange, onSelect, 
 }) {
   return (
     <aside className="account-sidebar">
-      <div className="brand-block">
-        <span className="eyebrow">Local credentials</span>
-        <h1>SwitchAccounts</h1>
-        <p>账号快照只保存在本机。导出文件是明文，请像保管密码一样保管它。</p>
+      <div className="brand-bar">
+        <img className="brand-mark" src="/icons/switchaccounts.svg" alt="" />
+        <div className="brand-lockup">
+          <h1 className="brand-name">SwitchAccounts</h1>
+          <div className="brand-note">本地账号快照工作台</div>
+        </div>
       </div>
 
       <label className="search-box">
@@ -163,12 +165,25 @@ function AccountSidebar({ profiles, query, selectedId, onQueryChange, onSelect, 
 function AccountSummary({ profile }: { profile: AccountProfile }) {
   return (
     <header className="account-summary">
-      <div>
-        <span className="eyebrow">当前账号</span>
+      <div className="summary-copy">
+        <span className="field-label">当前账号</span>
         <h2>{profile.name}</h2>
-        <p>{profile.registrableDomain} · {profile.cookies.length} Cookies · {Object.keys(profile.webStorageByOrigin).length} Origins</p>
+        <p>{profile.registrableDomain} · 创建于 {formatProfileTime(profile.createdAt)}</p>
+      </div>
+      <div className="summary-metrics" aria-label="账号快照统计">
+        <Metric value={profile.cookies.length} label="Cookies" />
+        <Metric value={Object.keys(profile.webStorageByOrigin).length} label="Origins" />
       </div>
     </header>
+  );
+}
+
+function Metric({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="metric">
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
   );
 }
 
@@ -193,7 +208,7 @@ function TabNav({ activeTab, onChange }: { activeTab: ActiveTab; onChange: (tab:
   );
 }
 
-function TabPanel({ id, label, children }: { id: ActiveTab; label: string; children: React.ReactNode }) {
+function TabPanel({ id, label, children }: { id: ActiveTab; label: string; children: ReactNode }) {
   return (
     <section id={`panel-${id}`} role="tabpanel" aria-labelledby={`tab-${id}`} aria-label={label} className="tab-panel">
       {children}
@@ -224,7 +239,7 @@ function OverviewTab({ profile, send, onSaved }: { profile: AccountProfile; send
 
   return (
     <div className="overview-grid">
-      <label>账号名称<input value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="wide-field">账号名称<input value={name} onChange={(event) => setName(event.target.value)} /></label>
       <div className="stat-card">
         <strong>{profile.cookies.length}</strong>
         <span>Cookies</span>
@@ -278,9 +293,10 @@ function CookieTab({ profile, send, onSaved }: { profile: AccountProfile; send: 
         const index = profile.cookies.indexOf(cookie);
         return (
           <article key={`${cookie.name}-${cookie.domain}-${cookie.path}-${index}`} className="cookie-row">
-            <strong>{cookie.name}</strong>
-            <span>{cookie.domain}</span>
-            <span>{cookie.path}</span>
+            <div className="record-head">
+              <strong>{cookie.name}</strong>
+              <small><span>{cookie.domain}</span><span>{cookie.path}</span></small>
+            </div>
             <label>名称<input value={cookie.name} onChange={(event) => void updateCookie(index, { name: event.target.value })} /></label>
             <label>值<input type="password" value={cookie.value} onChange={(event) => void updateCookie(index, { value: event.target.value })} /></label>
             <label>域名<input value={cookie.domain} onChange={(event) => void updateCookie(index, { domain: event.target.value })} /></label>
@@ -319,7 +335,7 @@ function CookieTab({ profile, send, onSaved }: { profile: AccountProfile; send: 
                 }}
               />
             </label>
-            <small>hostOnly: {String(cookie.hostOnly)} · storeId: {cookie.storeId}{cookie.partitionKey ? " · partitioned" : ""}</small>
+            <small className="record-meta">hostOnly: {String(cookie.hostOnly)} · storeId: {cookie.storeId}{cookie.partitionKey ? " · partitioned" : ""}</small>
             <button type="button" className="danger" onClick={() => void deleteCookie(index)}>删除 Cookie</button>
           </article>
         );
@@ -414,8 +430,8 @@ function ToolsTab({ profiles, origins, send, onChanged }: {
         <ul>
           {origins.map((origin) => (
             <li key={origin}>
-              {origin}
-              <button type="button" onClick={() => void removeGrantedSite(origin, send, onChanged)}>撤销</button>
+              <span>{origin}</span>
+              <button type="button" className="secondary" onClick={() => void removeGrantedSite(origin, send, onChanged)}>撤销</button>
             </li>
           ))}
         </ul>
@@ -503,4 +519,10 @@ async function readFileText(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsText(file);
   });
+}
+
+function formatProfileTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "未知时间";
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }

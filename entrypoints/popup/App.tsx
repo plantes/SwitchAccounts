@@ -82,54 +82,67 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
     }
   }
 
-  if (!site && !error) return <main className="popup-shell">加载当前站点…</main>;
+  if (!site && !error) {
+    return <main className="popup-shell loading">加载当前站点…</main>;
+  }
 
   return (
     <main className="popup-shell">
-      <header className="hero">
-        <span className="eyebrow">SwitchAccounts</span>
-        <h1>{site?.scope.hostname ?? "不可用页面"}</h1>
-        {site && <p>注册域：{site.scope.registrableDomain} · Cookie 包含全部子域</p>}
+      <header className="brand-bar">
+        <img className="brand-mark" src="/icons/switchaccounts.svg" alt="" />
+        <div className="brand-lockup">
+          <h1 className="brand-name">SwitchAccounts</h1>
+          <div className="brand-note">本地账号快照工作台</div>
+        </div>
       </header>
 
       {error && <div role="alert" className="notice danger">{error}</div>}
 
       {site && (
         <>
-          <section className="panel">
-            <div className="panel-title">
-              <h2>新增账号</h2>
-              <button type="button" disabled={busy} className="danger ghost" onClick={() => {
-                if (window.confirm("将清除当前网站 Cookie 与 Web Storage，但不会删除已保存账号。")) {
-                  void run({ type: "resetSite", tabId });
-                }
-              }}>重置当前状态</button>
+          <section className="site-action" aria-label="当前站点与登出">
+            <div className="site-copy">
+              <span className="field-label">当前站点</span>
+              <h2 className="site-host">{site.scope.hostname}</h2>
+              <p>注册域 {site.scope.registrableDomain} · Cookie 覆盖全部子域</p>
             </div>
-            <form onSubmit={(event) => void createProfile(event)} className="stack">
+            <button type="button" disabled={busy} className="danger" onClick={() => {
+              if (window.confirm("将清除当前网站 Cookie 与 Web Storage，但不会删除已保存账号。")) {
+                void run({ type: "resetSite", tabId });
+              }
+            }}>登出</button>
+          </section>
+
+          <section className="panel">
+            <h2>保存当前登录状态</h2>
+            <form onSubmit={(event) => void createProfile(event)} className="command">
               <label>
                 账号名称
                 <input value={name} onChange={(event) => setName(event.target.value)} required />
               </label>
-              <button disabled={busy || !name.trim()} type="submit">新增账号</button>
+              <button disabled={busy || !name.trim()} type="submit">保存</button>
             </form>
           </section>
 
-          {profiles.length === 0 ? (
-            <section className="empty">
-              <h2>暂无账号配置</h2>
-              <p>保存当前登录状态，之后可一键切换。</p>
-            </section>
-          ) : (
-            <section className="panel">
-              <label>
-                搜索账号
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名称" />
-              </label>
+          <section className="panel">
+            <h2>账号快照</h2>
+            <label>
+              搜索账号
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名称" />
+            </label>
+
+            {profiles.length === 0 ? (
+              <div className="empty">
+                <strong>暂无账号快照</strong>
+                <p>保存当前登录状态，之后可一键切换。</p>
+              </div>
+            ) : (
               <div className="profile-list">
                 {visibleProfiles.map((profile) => (
                   <article key={profile.id} className="profile-card">
-                    <div>
+                    <div className="profile-head">
                       <strong>{profile.name}</strong>
+                      <span className="profile-time">{formatProfileTime(profile.createdAt)}</span>
                     </div>
                     <div className="actions">
                       <button disabled={busy} aria-label={`切换 ${profile.name}`} onClick={() => {
@@ -151,8 +164,8 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
                   </article>
                 ))}
               </div>
-            </section>
-          )}
+            )}
+          </section>
         </>
       )}
     </main>
@@ -168,4 +181,15 @@ function needsSitePermission(request: BackgroundRequest): boolean {
     || request.type === "overwriteProfile"
     || request.type === "switchProfile"
     || request.type === "resetSite";
+}
+
+function formatProfileTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hour = String(date.getUTCHours()).padStart(2, "0");
+  const minute = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hour}:${minute}`;
 }
