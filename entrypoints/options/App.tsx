@@ -298,7 +298,10 @@ function CookieTab({ profile, send, onSaved }: { profile: AccountProfile; send: 
               <small><span>{cookie.domain}</span><span>{cookie.path}</span></small>
             </div>
             <label>名称<input value={cookie.name} onChange={(event) => void updateCookie(index, { name: event.target.value })} /></label>
-            <label>值<input type="password" value={cookie.value} onChange={(event) => void updateCookie(index, { value: event.target.value })} /></label>
+            <label>
+              值
+              <textarea value={formatJsonValue(cookie.value)} onChange={(event) => void updateCookie(index, { value: event.target.value })} />
+            </label>
             <label>域名<input value={cookie.domain} onChange={(event) => void updateCookie(index, { domain: event.target.value })} /></label>
             <label>路径<input value={cookie.path} onChange={(event) => void updateCookie(index, { path: event.target.value })} /></label>
             <label><input type="checkbox" checked={cookie.secure} onChange={(event) => void updateCookie(index, { secure: event.target.checked })} /> Secure</label>
@@ -394,7 +397,7 @@ function WebStorageTab({ profile, send, onSaved }: { profile: AccountProfile; se
               {Object.entries(snapshot[kind]).map(([key, value]) => (
                 <div key={`${kind}-${key}`} className="storage-row">
                   <span>{key}</span>
-                  <input value={value} onChange={(event) => void updateStorage(origin, kind, key, event.target.value)} />
+                  <textarea value={formatJsonValue(value)} onChange={(event) => void updateStorage(origin, kind, key, event.target.value)} />
                   <button type="button" className="danger" onClick={() => void deleteStorage(origin, kind, key)}>删除</button>
                 </div>
               ))}
@@ -456,7 +459,7 @@ function StorageAddForm({ kind, onAdd }: { kind: StorageKind; onAdd: (key: strin
   return (
     <div className="storage-row add-row">
       <input aria-label={`${kind} key`} placeholder={kind === "localStorage" ? "storage key" : "session storage key"} value={key} onChange={(event) => setKey(event.target.value)} />
-      <input aria-label={`${kind} value`} placeholder={kind === "localStorage" ? "storage value" : "session storage value"} value={value} onChange={(event) => setValue(event.target.value)} />
+      <textarea aria-label={`${kind} value`} placeholder={kind === "localStorage" ? "storage value" : "session storage value"} value={formatJsonValue(value)} onChange={(event) => setValue(event.target.value)} />
       <button type="button" onClick={() => void add()}>添加 {kind}</button>
     </div>
   );
@@ -519,6 +522,14 @@ async function readFileText(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsText(file);
   });
+}
+
+function formatJsonValue(value: string) {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
 }
 
 function formatProfileTime(value: string) {

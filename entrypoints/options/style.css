@@ -150,7 +150,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid rgba(255, 255, 255, .13);
@@ -160,12 +161,20 @@ select {
   background: rgba(0, 0, 0, .22);
 }
 
+textarea {
+  min-height: 92px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.45;
+}
+
 input[type="file"] {
   color: #cfc7b8;
 }
 
 input:focus,
 select:focus,
+textarea:focus,
 button:focus-visible {
   outline: 2px solid rgba(143, 184, 160, .7);
   outline-offset: 2px;

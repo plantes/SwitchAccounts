@@ -87,9 +87,39 @@ describe("OptionsApp", () => {
     await userEvent.click(await screen.findByRole("tab", { name: "Cookie" }));
     expect(await screen.findByText("sid")).toBeInTheDocument();
     expect(screen.getByText(".example.com")).toBeInTheDocument();
-    expect(screen.queryByText("secret-cookie-value")).not.toBeInTheDocument();
+    const valueEditor = screen.getByDisplayValue("secret-cookie-value");
+    expect(valueEditor.tagName).toBe("TEXTAREA");
+    expect(document.querySelector("input[type='password']")).toBeNull();
     await userEvent.click(screen.getByRole("tab", { name: "工具" }));
     expect(screen.getByText(/导出文件包含可直接使用的登录凭证/)).toBeInTheDocument();
+  });
+  it("Web Storage 值用 textarea 明文显示并格式化 JSON", async () => {
+    const jsonProfile: AccountProfile = {
+      ...profile,
+      webStorageByOrigin: {
+        "https://app.example.com": {
+          origin: "https://app.example.com",
+          localStorage: { account: "{\"user\":\"odin_tt\",\"roles\":[\"admin\",\"editor\"]}" },
+          sessionStorage: {},
+        },
+      },
+    };
+    const send = vi.fn(async (request) => {
+      if (request.type === "listAllProfiles") return result([jsonProfile]);
+      if (request.type === "listGrantedSites") return result([]);
+      return result({});
+    });
+    render(<OptionsApp send={send} />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Web Storage" }));
+
+    const formattedValue = '{\n  "user": "odin_tt",\n  "roles": [\n    "admin",\n    "editor"\n  ]\n}';
+    await waitFor(() => {
+      const valueEditor = Array.from(document.querySelectorAll("textarea"))
+        .find((textarea) => textarea.value === formattedValue);
+      expect(valueEditor).toBeDefined();
+      expect(valueEditor?.tagName).toBe("TEXTAREA");
+    });
   });
 });
 
