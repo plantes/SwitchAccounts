@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 - 2026-06-29
+
+### Fixed
+
+- 切换账号时跳过已过期的持久 Cookie，避免短期状态 Cookie 过期导致整个恢复流程失败。
+- Web Storage 消息发送失败时自动使用脚本 fallback 读取、清理或恢复当前页面存储，减少扩展更新后旧页面未注入 content script 的影响。
+
 ## 1.0.1 - 2026-06-28
 
 ### Added
