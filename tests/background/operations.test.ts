@@ -24,6 +24,7 @@ function makeDeps(options: {
   repository?: ProfileRepository;
   failSetCookie?: boolean;
   failWriteStorage?: boolean;
+  failTabMessage?: boolean;
 } = {}) {
   let repository = options.repository ?? { schemaVersion: 2 as const, profiles: [] };
   const calls: string[] = [];
@@ -32,9 +33,18 @@ function makeDeps(options: {
     message: Parameters<ChromeAdapter["sendTabMessage"]>[1],
   ): Promise<T> => {
     calls.push(message.type);
+    if (options.failTabMessage) throw new Error("Could not establish connection. Receiving end does not exist.");
     if (message.type === "readWebStorage" && options.missingWebStorageResponse) return undefined as T;
     if (message.type === "readWebStorage") return (options.webStorage ?? storage) as T;
     if (message.type === "writeWebStorage" && options.failWriteStorage) throw new Error("write failed");
+    return { ok: true } as T;
+  };
+  const executeWebStorageCommand = async <T,>(
+    _tabId: number,
+    message: Parameters<ChromeAdapter["sendTabMessage"]>[1],
+  ): Promise<T> => {
+    calls.push(`fallback:${message.type}`);
+    if (message.type === "readWebStorage") return (options.webStorage ?? storage) as T;
     return { ok: true } as T;
   };
 
@@ -51,6 +61,7 @@ function makeDeps(options: {
     }),
     reloadTab: vi.fn(async () => { calls.push("reload"); }),
     sendTabMessage: vi.fn(sendTabMessage) as ChromeAdapter["sendTabMessage"],
+    executeWebStorageCommand: vi.fn(executeWebStorageCommand) as ChromeAdapter["executeWebStorageCommand"],
     getAllOrigins: vi.fn(async () => []),
     removeOrigins: vi.fn(async () => true),
   } satisfies ChromeAdapter;
@@ -141,6 +152,54 @@ describe("BackgroundOperations", () => {
       error: { code: "COOKIE_WRITE_FAILED" },
     });
     expect(calls).toEqual(["clearWebStorage", "setCookie", "clearWebStorage"]);
+  });
+
+  it("切换时跳过已过期 Cookie 并继续恢复", async () => {
+    const baseCookie = profile().cookies[0] as AccountProfile["cookies"][number];
+    const expiredCookie: AccountProfile["cookies"][number] = {
+      ...baseCookie,
+      name: "expired",
+      session: false,
+      expirationDate: 1,
+    };
+    const freshCookie: AccountProfile["cookies"][number] = {
+      ...baseCookie,
+      name: "fresh",
+    };
+    const savedProfile = {
+      ...profile(),
+      cookies: [expiredCookie, freshCookie],
+    };
+    const { ops, calls, chrome } = makeDeps({
+      repository: { schemaVersion: 2, profiles: [savedProfile] },
+    });
+
+    await expect(ops.switchProfile(1, savedProfile.id)).resolves.toMatchObject({ ok: true });
+    expect(chrome.setCookie).toHaveBeenCalledTimes(1);
+    expect(chrome.setCookie).toHaveBeenCalledWith(expect.objectContaining({ name: "fresh" }));
+    expect(calls).toEqual(["clearWebStorage", "setCookie", "writeWebStorage", "reload"]);
+  });
+
+  it("content script 未响应时使用脚本 fallback 清理和恢复 Web Storage", async () => {
+    const { ops, calls, chrome } = makeDeps({
+      repository: { schemaVersion: 2, profiles: [profile()] },
+      failTabMessage: true,
+    });
+
+    await expect(ops.switchProfile(1, profile().id)).resolves.toMatchObject({ ok: true });
+    expect(chrome.executeWebStorageCommand).toHaveBeenCalledWith(1, { type: "clearWebStorage" });
+    expect(chrome.executeWebStorageCommand).toHaveBeenCalledWith(1, {
+      type: "writeWebStorage",
+      snapshot: storage,
+    });
+    expect(calls).toEqual([
+      "clearWebStorage",
+      "fallback:clearWebStorage",
+      "setCookie",
+      "writeWebStorage",
+      "fallback:writeWebStorage",
+      "reload",
+    ]);
   });
 
   it("重置成功清理并刷新但不改仓库", async () => {

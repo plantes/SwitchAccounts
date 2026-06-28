@@ -128,6 +128,7 @@ export interface ChromeAdapter {
   setCookie(details: chrome.cookies.SetDetails): Promise<chrome.cookies.Cookie>;
   reloadTab(tabId: number): Promise<void>;
   sendTabMessage<T>(tabId: number, message: WebStorageCommand): Promise<T>;
+  executeWebStorageCommand<T>(tabId: number, message: WebStorageCommand): Promise<T>;
   getAllOrigins(): Promise<string[]>;
   removeOrigins(origins: string[]): Promise<boolean>;
 }

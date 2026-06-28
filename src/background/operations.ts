@@ -218,7 +218,7 @@ export class BackgroundOperations {
   }>> {
     try {
       const cookies = (await this.deps.chrome.getCookies(scope.registrableDomain)).map(fromChromeCookie);
-      const webStorage = await this.deps.chrome.sendTabMessage<unknown>(tabId, { type: "readWebStorage" });
+      const webStorage = await this.runWebStorageCommand<unknown>(tabId, { type: "readWebStorage" });
       const parsed = WebStorageSnapshotSchema.safeParse(webStorage);
       if (!parsed.success) {
         return fail("WEB_STORAGE_READ_FAILED", "读取 Web Storage 失败。", parsed.error.issues.map((issue) => issue.message));
@@ -240,14 +240,16 @@ export class BackgroundOperations {
     }
 
     try {
-      await this.deps.chrome.sendTabMessage(tabId, { type: "clearWebStorage" });
+      await this.runWebStorageCommand(tabId, { type: "clearWebStorage" });
     } catch (cause) {
       throw operationFailure("WEB_STORAGE_CLEAR_FAILED", "清理 Web Storage 失败。", cause);
     }
   }
 
   private async restoreProfile(tabId: number, scope: SiteScope, profile: AccountProfile): Promise<void> {
+    const nowSeconds = Date.parse(this.deps.now()) / 1000;
     for (const cookie of profile.cookies) {
+      if (isExpiredPersistentCookie(cookie, nowSeconds)) continue;
       try {
         await this.deps.chrome.setCookie(toSetDetails(cookie));
       } catch (cause) {
@@ -265,7 +267,7 @@ export class BackgroundOperations {
       sessionStorage: {},
     };
     try {
-      await this.deps.chrome.sendTabMessage(tabId, { type: "writeWebStorage", snapshot });
+      await this.runWebStorageCommand(tabId, { type: "writeWebStorage", snapshot });
     } catch (cause) {
       throw operationFailure("WEB_STORAGE_WRITE_FAILED", "恢复 Web Storage 失败。", cause);
     }
@@ -276,6 +278,14 @@ export class BackgroundOperations {
       await this.clearSiteState(tabId, scope);
     } catch {
       // 切换失败时不刷新；保留原始失败给用户重试。
+    }
+  }
+
+  private async runWebStorageCommand<T>(tabId: number, message: Parameters<ChromeAdapter["sendTabMessage"]>[1]): Promise<T> {
+    try {
+      return await this.deps.chrome.sendTabMessage<T>(tabId, message);
+    } catch {
+      return this.deps.chrome.executeWebStorageCommand<T>(tabId, message);
     }
   }
 
@@ -311,4 +321,8 @@ function mapOperationFailure(error: unknown): OperationError {
 
 function isOperationError(error: unknown): error is OperationError {
   return typeof error === "object" && error !== null && "code" in error && "message" in error;
+}
+
+function isExpiredPersistentCookie(cookie: AccountProfile["cookies"][number], nowSeconds: number): boolean {
+  return !cookie.session && cookie.expirationDate !== undefined && cookie.expirationDate <= nowSeconds;
 }
