@@ -14,6 +14,10 @@ export function selectProfiles(repository: ProfileRepository, scope: ExportScope
   if (scope.type === "site") {
     return repository.profiles.filter((profile) => profile.registrableDomain === scope.registrableDomain);
   }
+  if (scope.type === "profiles") {
+    const selectedIds = new Set(scope.profileIds);
+    return repository.profiles.filter((profile) => selectedIds.has(profile.id));
+  }
   return repository.profiles.filter((profile) => profile.id === scope.profileId);
 }
 

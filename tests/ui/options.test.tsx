@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import OptionsApp from "../../entrypoints/options/App";
+import OptionsApp, { formatExportFileName } from "../../entrypoints/options/App";
 import type { AccountProfile, OperationResult } from "../../src/domain/models";
 
 const profile: AccountProfile = {
@@ -47,6 +47,11 @@ function result<T>(data: T): OperationResult<T> {
 }
 
 describe("OptionsApp", () => {
+  it("导出文件名包含可排序的本地时间戳", () => {
+    expect(formatExportFileName(new Date(2026, 8, 3, 21, 45, 7)))
+      .toBe("switchaccounts-backup-20260903-214507.json");
+  });
+
   it("使用侧边栏工作台同款品牌栏", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "listAllProfiles") return result([profile]);
@@ -55,7 +60,7 @@ describe("OptionsApp", () => {
     });
     const { container } = render(<OptionsApp send={send} />);
 
-    expect(await screen.findByRole("heading", { name: "SwitchAccounts" })).toBeInTheDocument();
+    expect(await screen.findByText("SwitchAccounts")).toBeInTheDocument();
     expect(screen.getByText("本地账号快照工作台")).toBeInTheDocument();
     const mark = container.querySelector<HTMLImageElement>(".brand-mark");
     expect(mark).not.toBeNull();
@@ -69,7 +74,7 @@ describe("OptionsApp", () => {
       return result({});
     });
     render(<OptionsApp send={send} />);
-    expect(await screen.findByRole("heading", { name: "SwitchAccounts" })).toBeInTheDocument();
+    expect(await screen.findByText("SwitchAccounts")).toBeInTheDocument();
     expect(await screen.findByText("example.com")).toBeInTheDocument();
     expect(screen.queryByText("secret-cookie-value")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("secret-cookie-value")).not.toBeInTheDocument();
@@ -90,8 +95,8 @@ describe("OptionsApp", () => {
     const valueEditor = screen.getByDisplayValue("secret-cookie-value");
     expect(valueEditor.tagName).toBe("TEXTAREA");
     expect(document.querySelector("input[type='password']")).toBeNull();
-    await userEvent.click(screen.getByRole("tab", { name: "工具" }));
-    expect(screen.getByText(/导出文件包含可直接使用的登录凭证/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "工具" }));
+    expect(screen.getByText("配置文件包含登录凭证")).toBeInTheDocument();
   });
   it("Web Storage 值用 textarea 明文显示并格式化 JSON", async () => {
     const jsonProfile: AccountProfile = {
@@ -206,7 +211,7 @@ describe("OptionsApp v1 管理能力", () => {
     render(<OptionsApp send={send} />);
 
     await screen.findByText("example.com");
-    await userEvent.click(screen.getByRole("tab", { name: "工具" }));
+    await userEvent.click(screen.getByRole("button", { name: "工具" }));
     const input = document.querySelector<HTMLInputElement>("input[type='file']");
     expect(input).not.toBeNull();
     await userEvent.upload(input!, new File([JSON.stringify(bundle)], "profiles.json", { type: "application/json" }));
@@ -225,13 +230,30 @@ describe("OptionsApp v1 管理能力", () => {
     });
     render(<OptionsApp send={send} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "打开工具" }));
+    await userEvent.click(await screen.findByRole("button", { name: "打开工具与设置" }));
 
-    expect(screen.getByRole("tabpanel", { name: "工具" })).toBeInTheDocument();
-    expect(screen.getByText("导入 JSON 文件")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "工具与设置" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "导入账号配置" })).toBeInTheDocument();
   });
 
-  it("默认使用概览标签，并允许在详情标签之间切换", async () => {
+  it("工具工作区支持拖放 JSON 文件", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "listAllProfiles") return result([profile]);
+      if (request.type === "listGrantedSites") return result([]);
+      return result({});
+    });
+    render(<OptionsApp send={send} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "工具" }));
+    fireEvent.drop(screen.getByLabelText("导入 JSON 文件拖放区"), {
+      dataTransfer: { files: [new File(["not-json"], "invalid.json", { type: "application/json" })] },
+    });
+
+    expect(await screen.findByText("导入文件无效，未写入任何配置。")).toBeInTheDocument();
+    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: "importProfiles" }));
+  });
+
+  it("默认使用概览标签，并允许在账号详情标签之间切换", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "listAllProfiles") return result([profile]);
       if (request.type === "listGrantedSites") return result([]);
@@ -244,8 +266,83 @@ describe("OptionsApp v1 管理能力", () => {
     expect(screen.getByRole("tabpanel", { name: "Cookie" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("tab", { name: "Web Storage" }));
     expect(screen.getByRole("tabpanel", { name: "Web Storage" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("tab", { name: "工具" }));
-    expect(screen.getByRole("tabpanel", { name: "工具" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "工具" })).not.toBeInTheDocument();
+  });
+
+  it("切到工具工作区后隐藏账号列表列，并可切回账号工作区", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "listAllProfiles") return result([profile, homeProfile]);
+      if (request.type === "listGrantedSites") return result(["https://example.com/*"]);
+      return result({});
+    });
+    const { container } = render(<OptionsApp send={send} />);
+
+    await screen.findByLabelText("管理页搜索");
+    await userEvent.click(screen.getByRole("button", { name: "工具" }));
+
+    expect(container.querySelector(".options-shell")).toHaveClass("tools-mode");
+    expect(screen.getByRole("heading", { name: "工具与设置" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("管理页搜索")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "账号快照" })).not.toBeInTheDocument();
+    expect(screen.queryByText("当前账号")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "概览" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "账号" }));
+    expect(container.querySelector(".options-shell")).toHaveClass("accounts-mode");
+    expect(screen.getByLabelText("管理页搜索")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "概览" })).toBeInTheDocument();
+  });
+
+  it("允许勾选多个账号后按所选范围导出", async () => {
+    const exportedAt = "2026-09-03T13:45:07.000Z";
+    const send = vi.fn(async (request) => {
+      if (request.type === "listAllProfiles") return result([profile, homeProfile]);
+      if (request.type === "listGrantedSites") return result([]);
+      if (request.type === "exportProfiles") return result({
+        format: "switchaccounts" as const,
+        schemaVersion: 2 as const,
+        exportedAt,
+        profiles: [profile],
+      });
+      return result({});
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const createObjectURL = vi.fn(() => "blob:export");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    render(<OptionsApp send={send} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "工具" }));
+    expect(screen.getByText("已选择", { exact: false })).toHaveTextContent("已选择 2 / 2");
+    await userEvent.click(screen.getByRole("checkbox", { name: "选择导出账号 Home" }));
+    expect(screen.getByText("已选择", { exact: false })).toHaveTextContent("已选择 1 / 2");
+    await userEvent.click(screen.getByRole("button", { name: "导出已选账号" }));
+
+    expect(send).toHaveBeenCalledWith({
+      type: "exportProfiles",
+      scope: { type: "profiles", profileIds: [profile.id] },
+    });
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("将导出 1 个账号"));
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:export");
+  });
+
+  it("未选择账号时禁用导出按钮", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "listAllProfiles") return result([profile, homeProfile]);
+      if (request.type === "listGrantedSites") return result([]);
+      return result({});
+    });
+    render(<OptionsApp send={send} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "工具" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "全选账号" }));
+
+    expect(screen.getByRole("button", { name: "导出已选账号" })).toBeDisabled();
+    expect(screen.getByText("已选择", { exact: false })).toHaveTextContent("已选择 0 / 2");
   });
 
   it("从左侧账号导航选择账号后，详情区显示对应账号", async () => {

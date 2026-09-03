@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ExportBundleSchema } from "../../src/domain/schemas";
+import { BackgroundRequestSchema, ExportBundleSchema } from "../../src/domain/schemas";
 
 const validProfile = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -13,6 +13,17 @@ const validProfile = {
 };
 
 describe("ExportBundleSchema", () => {
+  it("接受非空的多账号导出范围", () => {
+    expect(BackgroundRequestSchema.safeParse({
+      type: "exportProfiles",
+      scope: { type: "profiles", profileIds: [validProfile.id] },
+    }).success).toBe(true);
+    expect(BackgroundRequestSchema.safeParse({
+      type: "exportProfiles",
+      scope: { type: "profiles", profileIds: [] },
+    }).success).toBe(false);
+  });
+
   it("拒绝未知格式版本", () => {
     expect(ExportBundleSchema.safeParse({
       format: "switchaccounts",

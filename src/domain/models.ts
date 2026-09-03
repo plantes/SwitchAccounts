@@ -59,7 +59,8 @@ export interface ExportBundle {
 export type ExportScope =
   | { type: "all" }
   | { type: "site"; registrableDomain: string }
-  | { type: "profile"; profileId: string };
+  | { type: "profile"; profileId: string }
+  | { type: "profiles"; profileIds: string[] };
 
 export interface ImportPreview {
   added: number;

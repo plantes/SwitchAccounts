@@ -78,6 +78,7 @@ export const ExportScopeSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("all") }),
   z.strictObject({ type: z.literal("site"), registrableDomain: z.string().min(1) }),
   z.strictObject({ type: z.literal("profile"), profileId: z.string().uuid() }),
+  z.strictObject({ type: z.literal("profiles"), profileIds: z.array(z.string().uuid()).min(1) }),
 ]);
 
 export const BackgroundRequestSchema = z.discriminatedUnion("type", [

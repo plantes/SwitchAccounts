@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { AccountProfile, BackgroundRequest, CookieSnapshot, OperationResult, WebStorageSnapshot } from "../../src/domain/models";
+import {
+  DownloadSimple,
+  FolderOpen,
+  GlobeSimple,
+  UploadSimple,
+  UserCircle,
+  WarningCircle,
+  Wrench,
+} from "@phosphor-icons/react";
+import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import type { AccountProfile, BackgroundRequest, CookieSnapshot, ExportBundle, OperationResult, WebStorageSnapshot } from "../../src/domain/models";
 import { SCHEMA_VERSION } from "../../src/domain/models";
 import { previewImport } from "../../src/domain/import-export";
 import { normalizeProfileName, searchProfiles } from "../../src/domain/profiles";
@@ -9,13 +18,13 @@ import "./style.css";
 
 type Send = (request: BackgroundRequest) => Promise<OperationResult<unknown>>;
 type StorageKind = "localStorage" | "sessionStorage";
-type ActiveTab = "overview" | "cookies" | "storage" | "tools";
+type WorkspaceView = "accounts" | "tools";
+type ActiveTab = "overview" | "cookies" | "storage";
 
 const tabs: { id: ActiveTab; label: string }[] = [
   { id: "overview", label: "概览" },
   { id: "cookies", label: "Cookie" },
   { id: "storage", label: "Web Storage" },
-  { id: "tools", label: "工具" },
 ];
 
 export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
@@ -24,6 +33,7 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [activeView, setActiveView] = useState<WorkspaceView>("accounts");
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
 
   async function load() {
@@ -51,19 +61,24 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
   const selected = filtered.find((profile) => profile.id === selectedId) ?? filtered[0];
 
   return (
-    <main className="options-shell">
-      <AccountSidebar
-        profiles={filtered}
-        query={query}
-        selectedId={selected?.id ?? ""}
-        onQueryChange={setQuery}
-        onSelect={setSelectedId}
-        onTools={() => setActiveTab("tools")}
-      />
+    <main className={`options-shell ${activeView === "tools" ? "tools-mode" : "accounts-mode"}`}>
+      <AppRail activeView={activeView} onChange={setActiveView} />
+
+      {activeView === "accounts" && (
+        <AccountSidebar
+          profiles={filtered}
+          query={query}
+          selectedId={selected?.id ?? ""}
+          onQueryChange={setQuery}
+          onSelect={setSelectedId}
+        />
+      )}
 
       <section className="detail-shell">
         {error && <div role="alert" className="notice danger">{error}</div>}
-        {selected ? (
+        {activeView === "tools" ? (
+          <ToolsWorkspace profiles={profiles} origins={origins} send={send} onChanged={load} />
+        ) : selected ? (
           <>
             <AccountSummary profile={selected} />
             <TabNav activeTab={activeTab} onChange={setActiveTab} />
@@ -83,34 +98,13 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
                   <WebStorageTab profile={selected} send={send} onSaved={load} />
                 </TabPanel>
               )}
-              {activeTab === "tools" && (
-                <TabPanel id="tools" label="工具">
-                  <ToolsTab profiles={profiles} origins={origins} send={send} onChanged={load} />
-                </TabPanel>
-              )}
-            </section>
-          </>
-        ) : activeTab === "tools" ? (
-          <>
-            <header className="account-summary">
-              <div className="summary-copy">
-                <span className="field-label">工具</span>
-                <h2>导入 / 导出与设置</h2>
-                <p>没有账号时也可以先导入已有配置，或查看当前授权站点。</p>
-              </div>
-            </header>
-            <TabNav activeTab={activeTab} onChange={setActiveTab} />
-            <section className="tab-surface">
-              <TabPanel id="tools" label="工具">
-                <ToolsTab profiles={profiles} origins={origins} send={send} onChanged={load} />
-              </TabPanel>
             </section>
           </>
         ) : (
           <section className="empty-state">
             <strong>{profiles.length === 0 ? "暂无账号配置" : "无匹配账号"}</strong>
             <p>{profiles.length === 0 ? "可以从侧边栏保存当前网站状态，或在工具中导入已有配置。" : "调整搜索条件后再选择账号。"}</p>
-            <button type="button" onClick={() => setActiveTab("tools")}>打开工具</button>
+            <button type="button" onClick={() => setActiveView("tools")}>打开工具与设置</button>
           </section>
         )}
       </section>
@@ -118,23 +112,49 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
   );
 }
 
-function AccountSidebar({ profiles, query, selectedId, onQueryChange, onSelect, onTools }: {
+function AppRail({ activeView, onChange }: { activeView: WorkspaceView; onChange: (view: WorkspaceView) => void }) {
+  return (
+    <aside className="app-rail">
+      <div className="rail-brand">
+        <img className="brand-mark" src="/icons/switchaccounts.svg" alt="" />
+        <strong>SwitchAccounts</strong>
+        <span>本地账号快照工作台</span>
+      </div>
+
+      <nav className="rail-nav" aria-label="工作区">
+        <button
+          type="button"
+          className={`rail-nav-item ${activeView === "accounts" ? "selected" : ""}`}
+          aria-pressed={activeView === "accounts"}
+          onClick={() => onChange("accounts")}
+        >
+          <UserCircle aria-hidden="true" weight="regular" />
+          <span>账号</span>
+        </button>
+        <button
+          type="button"
+          className={`rail-nav-item ${activeView === "tools" ? "selected" : ""}`}
+          aria-pressed={activeView === "tools"}
+          onClick={() => onChange("tools")}
+        >
+          <Wrench aria-hidden="true" weight="regular" />
+          <span>工具</span>
+        </button>
+      </nav>
+    </aside>
+  );
+}
+
+function AccountSidebar({ profiles, query, selectedId, onQueryChange, onSelect }: {
   profiles: AccountProfile[];
   query: string;
   selectedId: string;
   onQueryChange: (query: string) => void;
   onSelect: (profileId: string) => void;
-  onTools: () => void;
 }) {
   return (
     <aside className="account-sidebar">
-      <div className="brand-bar">
-        <img className="brand-mark" src="/icons/switchaccounts.svg" alt="" />
-        <div className="brand-lockup">
-          <h1 className="brand-name">SwitchAccounts</h1>
-          <div className="brand-note">本地账号快照工作台</div>
-        </div>
-      </div>
+      <h1 className="account-library-title">账号快照</h1>
 
       <label className="search-box">
         管理页搜索
@@ -156,8 +176,6 @@ function AccountSidebar({ profiles, query, selectedId, onQueryChange, onSelect, 
         ))}
         {profiles.length === 0 && <p className="muted">没有匹配的账号。</p>}
       </div>
-
-      <button type="button" className="secondary sidebar-tool" onClick={onTools}>导入 / 导出与设置</button>
     </aside>
   );
 }
@@ -411,34 +429,160 @@ function WebStorageTab({ profile, send, onSaved }: { profile: AccountProfile; se
   );
 }
 
-function ToolsTab({ profiles, origins, send, onChanged }: {
+function ToolsWorkspace({ profiles, origins, send, onChanged }: {
   profiles: AccountProfile[];
   origins: string[];
   send: Send;
   onChanged: () => Promise<void>;
 }) {
   return (
+    <div className="tools-workspace">
+      <header className="tools-header">
+        <div className="tools-breadcrumb"><span>SwitchAccounts</span><span aria-hidden="true">/</span><span>全局</span></div>
+        <h1>工具与设置</h1>
+        <p>统一管理本地账号配置与网站授权</p>
+      </header>
+      <ToolsTab profiles={profiles} origins={origins} send={send} onChanged={onChanged} />
+    </div>
+  );
+}
+
+function ToolsTab({ profiles, origins, send, onChanged }: {
+  profiles: AccountProfile[];
+  origins: string[];
+  send: Send;
+  onChanged: () => Promise<void>;
+}) {
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>(() => profiles.map((profile) => profile.id));
+  const [selectionTouched, setSelectionTouched] = useState(false);
+  const selectedProfileIdSet = useMemo(() => new Set(selectedProfileIds), [selectedProfileIds]);
+  const allProfilesSelected = profiles.length > 0 && selectedProfileIds.length === profiles.length;
+
+  useEffect(() => {
+    setSelectedProfileIds((current) => {
+      if (!selectionTouched) return profiles.map((profile) => profile.id);
+      const availableIds = new Set(profiles.map((profile) => profile.id));
+      return current.filter((profileId) => availableIds.has(profileId));
+    });
+  }, [profiles, selectionTouched]);
+
+  function toggleAllProfiles() {
+    setSelectionTouched(true);
+    setSelectedProfileIds(allProfilesSelected ? [] : profiles.map((profile) => profile.id));
+  }
+
+  function toggleProfile(profileId: string) {
+    setSelectionTouched(true);
+    setSelectedProfileIds((current) => current.includes(profileId)
+      ? current.filter((currentId) => currentId !== profileId)
+      : [...current, profileId]);
+  }
+
+  return (
     <div className="tools-grid">
-      <section className="tool-section">
-        <h3>导入 / 导出</h3>
-        <p className="warning">导出文件包含可直接使用的登录凭证。请勿上传、分享或保存在不可信位置。</p>
-        <ImportControl profiles={profiles} send={send} onImported={onChanged} />
-        <button type="button" onClick={() => void exportAll(send, profiles)}>导出全部配置</button>
+      <section className="tool-section import-export-section">
+        <div className="section-heading">
+          <h2>账号配置</h2>
+          <span aria-hidden="true" />
+        </div>
+        <p className="section-lead">导入已有配置，或选择账号创建一份本地备份。</p>
+        <div className="credential-warning">
+          <WarningCircle aria-hidden="true" weight="fill" />
+          <div>
+            <strong>配置文件包含登录凭证</strong>
+            <p>仅在可信设备上导入、保存和使用，请勿上传或分享给他人。</p>
+          </div>
+        </div>
+        <div className="config-action import-action">
+          <div className="config-action-heading">
+            <span className="config-action-icon"><UploadSimple aria-hidden="true" weight="regular" /></span>
+            <div>
+              <h3>导入账号配置</h3>
+              <p>选择由 SwitchAccounts 导出的 JSON 文件；写入前会预览新增账号、覆盖账号和涉及站点。</p>
+            </div>
+          </div>
+          <ImportControl profiles={profiles} send={send} onImported={onChanged} />
+        </div>
+
+        <div className="config-action export-block">
+          <div className="config-action-heading">
+            <span className="config-action-icon"><DownloadSimple aria-hidden="true" weight="regular" /></span>
+            <div>
+              <h3>导出账号备份</h3>
+              <p>选择需要备份的账号，将其 Cookies 与 Web Storage 打包为一个 JSON 文件。</p>
+            </div>
+          </div>
+          <fieldset className="export-profile-selector">
+            <legend className="visually-hidden">选择要导出的账号</legend>
+            <div className="export-selector-toolbar">
+              <label className="export-select-all">
+                <input
+                  type="checkbox"
+                  checked={allProfilesSelected}
+                  disabled={profiles.length === 0}
+                  onChange={toggleAllProfiles}
+                />
+                <span>全选账号</span>
+              </label>
+              <span className="export-selected-count">已选择 <strong>{selectedProfileIds.length}</strong> / {profiles.length}</span>
+            </div>
+            <div className="export-profile-list" role="group" aria-label="可导出的账号">
+              {profiles.map((profile) => {
+                const selected = selectedProfileIdSet.has(profile.id);
+                return (
+                  <label key={profile.id} className={`export-profile-option ${selected ? "selected" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleProfile(profile.id)}
+                      aria-label={`选择导出账号 ${profile.name}`}
+                    />
+                    <span>
+                      <strong>{profile.name}</strong>
+                      <small>{profile.registrableDomain}</small>
+                    </span>
+                  </label>
+                );
+              })}
+              {profiles.length === 0 && <p className="export-empty">暂无可导出的账号</p>}
+            </div>
+          </fieldset>
+          <div className="export-action-row">
+            <p><strong>{selectedProfileIds.length}</strong><span>个账号将被导出</span></p>
+            <button
+              type="button"
+              className="export-button"
+              disabled={selectedProfileIds.length === 0}
+              onClick={() => void exportSelected(send, selectedProfileIds)}
+            >
+              <DownloadSimple aria-hidden="true" weight="bold" />
+              导出已选账号
+            </button>
+          </div>
+        </div>
       </section>
 
-      <section className="tool-section">
-        <h3>设置</h3>
-        <p>数据格式版本：{SCHEMA_VERSION}</p>
-        <p>已授权网站：</p>
-        <ul>
+      <section className="tool-section granted-sites-section">
+        <div className="section-heading">
+          <h2>授权站点</h2>
+          <span aria-hidden="true" />
+        </div>
+        <p className="schema-version">数据格式版本：v{SCHEMA_VERSION}</p>
+        {origins.length > 0 && (
+          <div className="origin-table-head" aria-hidden="true">
+            <span>网站域名（Origin）</span>
+            <span>操作</span>
+          </div>
+        )}
+        <ul className="origin-list">
           {origins.map((origin) => (
             <li key={origin}>
-              <span>{origin}</span>
-              <button type="button" className="secondary" onClick={() => void removeGrantedSite(origin, send, onChanged)}>撤销</button>
+              <span className="origin-value"><GlobeSimple aria-hidden="true" weight="regular" />{origin}</span>
+              <button type="button" className="origin-revoke" onClick={() => void removeGrantedSite(origin, send, onChanged)}>撤销</button>
             </li>
           ))}
         </ul>
-        {origins.length === 0 && <p className="muted">暂无已授权网站。</p>}
+        {origins.length === 0 && <p className="muted origin-empty">暂无已授权网站。</p>}
       </section>
     </div>
   );
@@ -467,6 +611,7 @@ function StorageAddForm({ kind, onAdd }: { kind: StorageKind; onAdd: (key: strin
 
 function ImportControl({ profiles, send, onImported }: { profiles: AccountProfile[]; send: Send; onImported: () => Promise<void> }) {
   const [summary, setSummary] = useState("");
+  const [dragging, setDragging] = useState(false);
 
   async function importFile(file: File | undefined) {
     if (!file) return;
@@ -488,25 +633,61 @@ function ImportControl({ profiles, send, onImported }: { profiles: AccountProfil
     }
   }
 
+  function onDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragging(false);
+    void importFile(event.dataTransfer.files[0]);
+  }
+
   return (
-    <div className="editor-block">
-      <label>导入 JSON 文件<input type="file" accept="application/json,.json" onChange={(event) => void importFile(event.target.files?.[0])} /></label>
-      {summary && <p>{summary}</p>}
+    <div className="import-control">
+      <div
+        className={`file-drop-zone ${dragging ? "dragging" : ""}`}
+        aria-label="导入 JSON 文件拖放区"
+        onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+      >
+        <UploadSimple className="drop-icon" aria-hidden="true" weight="regular" />
+        <p><strong>拖放配置文件到这里</strong><span>或从电脑中选择一个 .json 文件</span></p>
+        <label className="file-picker-button">
+          <FolderOpen aria-hidden="true" weight="regular" />
+          选择配置文件
+          <input className="visually-hidden" type="file" accept="application/json,.json" onChange={(event) => void importFile(event.target.files?.[0])} />
+        </label>
+      </div>
+      {summary && <p className="import-summary" role="status">{summary}</p>}
     </div>
   );
 }
 
-async function exportAll(send: Send, profiles: AccountProfile[]) {
-  if (!window.confirm("导出文件包含可直接使用的登录凭证。请勿上传、分享或保存在不可信位置。")) return;
-  const result = await send({ type: "exportProfiles", scope: { type: "all" } });
+async function exportSelected(send: Send, profileIds: string[]) {
+  if (profileIds.length === 0) return;
+  if (!window.confirm(`将导出 ${profileIds.length} 个账号。文件包含可直接使用的登录凭证，请勿上传、分享或保存在不可信位置。`)) return;
+  const result = await send({ type: "exportProfiles", scope: { type: "profiles", profileIds } }) as OperationResult<ExportBundle>;
   if (!result.ok) return;
   const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `switchaccounts-${profiles.length}-profiles.json`;
+  anchor.download = formatExportFileName(new Date(result.data.exportedAt));
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+export function formatExportFileName(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const timestamp = [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    "-",
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join("");
+  return `switchaccounts-backup-${timestamp}.json`;
 }
 
 async function removeGrantedSite(origin: string, send: Send, onRemoved: () => Promise<void>) {

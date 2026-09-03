@@ -18,12 +18,26 @@ const baseProfile: AccountProfile = {
   updatedAt: "2026-06-26T00:00:00.000Z",
 };
 
-const repo: ProfileRepository = { schemaVersion: 2, profiles: [baseProfile] };
+const secondProfile: AccountProfile = {
+  ...baseProfile,
+  id: "00000000-0000-4000-8000-000000000002",
+  name: "Saved",
+  normalizedName: "saved",
+};
+
+const repo: ProfileRepository = { schemaVersion: 2, profiles: [baseProfile, secondProfile] };
 
 describe("import-export", () => {
   it("按站点和账号筛选导出", () => {
-    expect(selectProfiles(repo, { type: "site", registrableDomain: "example.com" })).toHaveLength(1);
+    expect(selectProfiles(repo, { type: "site", registrableDomain: "example.com" })).toHaveLength(2);
     expect(selectProfiles(repo, { type: "profile", profileId: baseProfile.id })[0]?.name).toBe("Work");
+  });
+
+  it("按勾选顺序筛选多个导出账号并保持仓库顺序", () => {
+    expect(selectProfiles(repo, { type: "profiles", profileIds: [secondProfile.id] }))
+      .toEqual([secondProfile]);
+    expect(selectProfiles(repo, { type: "profiles", profileIds: [secondProfile.id, baseProfile.id] }))
+      .toEqual([baseProfile, secondProfile]);
   });
 
   it("构造带格式版本和时间的导出包", () => {
@@ -49,7 +63,7 @@ describe("import-export", () => {
       overwritten: 1,
       sites: ["example.com"],
     });
-    expect(mergeImport(repo, incoming).profiles).toHaveLength(2);
+    expect(mergeImport(repo, incoming).profiles).toHaveLength(3);
   });
 
   it("拒绝含旧字段的导出包", () => {
