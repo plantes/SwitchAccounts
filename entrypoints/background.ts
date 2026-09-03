@@ -5,6 +5,10 @@ import { ChromeProfileRepository } from "../src/infrastructure/profile-repositor
 import { SiteOperationLock } from "../src/infrastructure/site-lock";
 
 export default defineBackground(() => {
+  void chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((error: unknown) => console.error("无法启用侧边栏入口。", error));
+
   const operations = new BackgroundOperations({
     chrome: new BrowserChromeAdapter(),
     repository: new ChromeProfileRepository(),

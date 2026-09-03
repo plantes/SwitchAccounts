@@ -109,7 +109,7 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
         ) : (
           <section className="empty-state">
             <strong>{profiles.length === 0 ? "暂无账号配置" : "无匹配账号"}</strong>
-            <p>{profiles.length === 0 ? "可以从弹窗保存当前网站状态，或在工具中导入已有配置。" : "调整搜索条件后再选择账号。"}</p>
+            <p>{profiles.length === 0 ? "可以从侧边栏保存当前网站状态，或在工具中导入已有配置。" : "调整搜索条件后再选择账号。"}</p>
             <button type="button" onClick={() => setActiveTab("tools")}>打开工具</button>
           </section>
         )}

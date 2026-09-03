@@ -4,9 +4,9 @@
 
 - [ ] `corepack pnpm build` 成功，加载 `.output/chrome-mv3` 后扩展可启动。
 - [ ] `manifest.json` 是 Manifest V3。
-- [ ] 固定权限只有 `cookies`、`storage`、`scripting`、`activeTab`。
+- [ ] 固定权限只有 `cookies`、`storage`、`scripting`、`sidePanel`、`tabs`。
 - [ ] 站点权限位于 `optional_host_permissions`。
-- [ ] 不声明 `tabs`、`<all_urls>`、`storage.sync` 或隐身窗口支持。
+- [ ] 不声明 `<all_urls>`、`storage.sync` 或隐身窗口支持。
 
 ## 设计文档第 13 节验收
 
@@ -23,8 +23,10 @@
 
 ## 操作流程
 
-- [ ] 未保存账号时，Popup 显示“暂无账号配置”“新增账号”“重置当前状态”。
-- [ ] 已保存账号时，Popup 支持按名称搜索。
+- [ ] 点击扩展图标后打开 Chrome 原生侧边栏，不再显示弹窗。
+- [ ] 侧边栏保持打开时，切换标签页或完成页面导航会更新当前站点。
+- [ ] 未保存账号时，侧边栏显示“暂无账号快照”并允许保存当前登录状态。
+- [ ] 已保存账号时，侧边栏支持按名称搜索。
 - [ ] 切换、覆盖、删除、重置均有确认提示。
 - [ ] 新增账号不刷新当前网页。
 - [ ] 覆盖账号不刷新当前网页。

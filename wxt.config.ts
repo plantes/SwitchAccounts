@@ -5,7 +5,7 @@ export default defineConfig({
   manifest: {
     name: "SwitchAccounts",
     description: "Save and switch local website login states.",
-    permissions: ["cookies", "storage", "scripting", "activeTab"],
+    permissions: ["cookies", "storage", "scripting", "sidePanel", "tabs"],
     optional_host_permissions: ["http://*/*", "https://*/*"],
     incognito: "not_allowed",
     icons: {

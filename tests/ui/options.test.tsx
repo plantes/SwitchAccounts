@@ -47,7 +47,7 @@ function result<T>(data: T): OperationResult<T> {
 }
 
 describe("OptionsApp", () => {
-  it("使用 popup 工作台同款品牌栏", async () => {
+  it("使用侧边栏工作台同款品牌栏", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "listAllProfiles") return result([profile]);
       if (request.type === "listGrantedSites") return result([]);

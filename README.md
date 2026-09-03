@@ -12,7 +12,7 @@ SwitchAccounts 是一个 Chrome Manifest V3 扩展，用于保存网站的本地
 
 ## 功能
 
-- Popup 工作台：保存当前登录状态、切换账号、覆盖快照、删除快照、登出当前站点。
+- Chrome 侧边栏工作台：点击扩展图标即可打开，切换标签页时自动跟随当前站点；支持保存当前登录状态、切换账号、覆盖快照、删除快照、登出当前站点。
 - Options 管理页：账号搜索与管理、Cookie 快照编辑、Web Storage 快照编辑、导入 / 导出、授权站点撤销。
 - Chrome 图标：使用双钥匙图标，并在 `16/32/48/128px` 尺寸下配置到 `manifest.icons` 和 `action.default_icon`。
 
@@ -35,7 +35,8 @@ corepack pnpm build
 - `cookies`：读取、清理和恢复网站 Cookie。
 - `storage`：把账号配置保存到 `chrome.storage.local`。
 - `scripting`：为当前页面注入 Web Storage 操作脚本。
-- `activeTab`：由用户点击扩展图标后访问当前标签页。
+- `sidePanel`：在 Chrome 原生侧边栏中显示账号工作台。
+- `tabs`：侧边栏保持打开时识别当前标签页，并在切换标签页或页面导航后更新站点上下文。
 
 网站权限不会在安装时一次性申请。扩展会在用户对某个网站执行保存、切换、覆盖或登出等操作时，按注册域申请 HTTP/HTTPS 主域与全部子域权限。
 

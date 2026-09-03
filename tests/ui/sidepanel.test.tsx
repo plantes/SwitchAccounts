@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import PopupApp from "../../entrypoints/popup/App";
+import SidePanelApp from "../../entrypoints/sidepanel/App";
 import type { AccountProfile, CurrentSiteData, OperationResult } from "../../src/domain/models";
 
 const site: CurrentSiteData = {
@@ -29,7 +29,7 @@ function result<T>(data: T): OperationResult<T> {
   return { ok: true, data };
 }
 
-describe("PopupApp", () => {
+describe("SidePanelApp", () => {
   it("显示工作台空状态并允许保存当前登录状态", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "getCurrentSite") return result(site);
@@ -37,7 +37,7 @@ describe("PopupApp", () => {
       if (request.type === "createProfile") return result(profile);
       return result({});
     });
-    render(<PopupApp tabId={1} send={send} />);
+    render(<SidePanelApp tabId={1} send={send} />);
 
     expect(await screen.findByRole("heading", { name: "SwitchAccounts" })).toBeInTheDocument();
     expect(screen.getByText("app.example.com")).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe("PopupApp", () => {
       if (request.type === "listProfiles") return result([profile]);
       return result({});
     });
-    render(<PopupApp tabId={1} send={send} />);
+    render(<SidePanelApp tabId={1} send={send} />);
 
     expect(await screen.findByRole("textbox", { name: "修改账号标题 Work" })).toHaveValue("Work");
     expect(screen.getByText("2026-06-26 00:00")).toBeInTheDocument();
@@ -93,14 +93,14 @@ describe("PopupApp", () => {
     expect(send).toHaveBeenCalledWith({ type: "resetSite", tabId: 1 });
   });
 
-  it("允许直接在 popup 修改账号标题", async () => {
+  it("允许直接在侧边栏修改账号标题", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "getCurrentSite") return result(site);
       if (request.type === "listProfiles") return result([profile]);
       if (request.type === "updateProfile") return result(request.profile);
       return result({});
     });
-    render(<PopupApp tabId={1} send={send} />);
+    render(<SidePanelApp tabId={1} send={send} />);
 
     const title = await screen.findByRole("textbox", { name: "修改账号标题 Work" });
     await userEvent.click(title);
@@ -118,15 +118,15 @@ describe("PopupApp", () => {
   });
 });
 
-describe("PopupApp floating errors", () => {
-  it("allows dismissing the floating popup error", async () => {
+describe("SidePanelApp floating errors", () => {
+  it("allows dismissing the floating side panel error", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "getCurrentSite") return result(site);
       if (request.type === "listProfiles") return result([]);
       if (request.type === "createProfile") throw new Error("Cookie write failed");
       return result({});
     });
-    render(<PopupApp tabId={1} send={send} />);
+    render(<SidePanelApp tabId={1} send={send} />);
 
     await screen.findByText("暂无账号快照");
     await userEvent.type(screen.getByLabelText("账号名称"), "Work");
@@ -142,7 +142,7 @@ describe("PopupApp floating errors", () => {
   });
 });
 
-describe("PopupApp error recovery", () => {
+describe("SidePanelApp error recovery", () => {
   it("保存账号消息异常时显示错误并恢复按钮", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "getCurrentSite") return result(site);
@@ -150,7 +150,7 @@ describe("PopupApp error recovery", () => {
       if (request.type === "createProfile") throw new Error("This function must be called during a user gesture");
       return result({});
     });
-    render(<PopupApp tabId={1} send={send} />);
+    render(<SidePanelApp tabId={1} send={send} />);
 
     await screen.findByText("暂无账号快照");
     await userEvent.type(screen.getByLabelText("账号名称"), "Work");
@@ -160,7 +160,7 @@ describe("PopupApp error recovery", () => {
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });
 
-  it("首次保存账号时先在 Popup 用户手势内申请站点权限", async () => {
+  it("首次保存账号时先在侧边栏用户手势内申请站点权限", async () => {
     const unauthorizedSite: CurrentSiteData = { ...site, authorized: false };
     const requestPermission = vi.fn(async () => true);
     const send = vi.fn(async (request) => {
@@ -169,7 +169,7 @@ describe("PopupApp error recovery", () => {
       if (request.type === "createProfile") return result(profile);
       return result({});
     });
-    render(<PopupApp tabId={1} send={send} requestPermission={requestPermission} />);
+    render(<SidePanelApp tabId={1} send={send} requestPermission={requestPermission} />);
 
     const user = userEvent.setup();
     await screen.findByText("暂无账号快照");

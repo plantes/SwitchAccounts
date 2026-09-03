@@ -11,13 +11,14 @@
 html,
 body {
   min-width: 0;
+  width: 100%;
+  height: 100%;
   overflow-x: hidden;
   overflow-y: hidden;
 }
 
 body {
   margin: 0;
-  width: 380px;
   background:
     linear-gradient(90deg, rgba(255, 255, 255, .03) 1px, transparent 1px) 0 0 / 18px 18px,
     radial-gradient(circle at 92% -6%, rgba(143, 184, 160, .18), transparent 31%),
@@ -30,12 +31,12 @@ p {
   margin: 0;
 }
 
-.popup-shell {
+.sidepanel-shell {
   display: grid;
+  align-content: start;
   gap: 10px;
-  width: 380px;
-  max-width: 380px;
-  max-height: 600px;
+  width: 100%;
+  height: 100vh;
   min-width: 0;
   overflow-y: auto;
   padding: 12px;
@@ -43,28 +44,28 @@ p {
   scrollbar-width: thin;
 }
 
-.popup-shell::-webkit-scrollbar {
+.sidepanel-shell::-webkit-scrollbar {
   width: 9px;
 }
 
-.popup-shell::-webkit-scrollbar-track {
+.sidepanel-shell::-webkit-scrollbar-track {
   border-radius: 999px;
   background: rgba(255, 255, 255, .045);
 }
 
-.popup-shell::-webkit-scrollbar-thumb {
+.sidepanel-shell::-webkit-scrollbar-thumb {
   border: 2px solid rgba(14, 17, 17, .92);
   border-radius: 999px;
   background: linear-gradient(180deg, rgba(240, 182, 90, .86), rgba(143, 184, 160, .62));
 }
 
-.popup-shell::-webkit-scrollbar-thumb:hover {
+.sidepanel-shell::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #ffc66f, rgba(164, 207, 179, .86));
 }
 
-.popup-shell.loading {
+.sidepanel-shell.loading {
   align-content: center;
-  min-height: 180px;
+  min-height: 100vh;
   color: #cfc7b8;
 }
 
@@ -466,7 +467,7 @@ button:disabled {
 }
 
 @media (max-width: 350px) {
-  .popup-shell {
+  .sidepanel-shell {
     padding: 10px;
   }
 

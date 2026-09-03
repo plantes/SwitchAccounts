@@ -13,7 +13,7 @@ import "./style.css";
 type Send = (request: BackgroundRequest) => Promise<OperationResult<unknown>>;
 type RequestPermission = (origins: string[]) => Promise<boolean>;
 
-export default function PopupApp({ tabId, send = sendBackground, requestPermission = requestChromePermission }: {
+export default function SidePanelApp({ tabId, send = sendBackground, requestPermission = requestChromePermission }: {
   tabId: number;
   send?: Send;
   requestPermission?: RequestPermission;
@@ -97,11 +97,11 @@ export default function PopupApp({ tabId, send = sendBackground, requestPermissi
   }
 
   if (!site && !error) {
-    return <main className="popup-shell loading">加载当前站点…</main>;
+    return <main className="sidepanel-shell loading">加载当前站点…</main>;
   }
 
   return (
-    <main className="popup-shell">
+    <main className="sidepanel-shell">
       <header className="brand-bar">
         <img className="brand-mark" src="/icons/switchaccounts.svg" alt="" />
         <div className="brand-lockup">
