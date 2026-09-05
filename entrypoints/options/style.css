@@ -597,6 +597,28 @@ li {
   grid-template-columns: 112px minmax(320px, 352px) minmax(0, 1fr);
 }
 
+.accounts-mode .detail-shell {
+  container: account-detail / inline-size;
+}
+
+/* Adapt editors to the space remaining beside both navigation columns. */
+@container account-detail (max-width: 620px) {
+  .account-summary,
+  .overview-grid,
+  .cookie-row,
+  .storage-row {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .storage-row button {
+    width: 100%;
+  }
+}
+
 .options-shell.tools-mode {
   grid-template-columns: 112px minmax(0, 1fr);
 }
