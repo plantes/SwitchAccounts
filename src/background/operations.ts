@@ -4,6 +4,7 @@ import type {
   AccountProfile,
   ChromeAdapter,
   CurrentSiteData,
+  DocumentTarget,
   ExportBundle,
   ExportScope,
   OperationError,
@@ -13,9 +14,10 @@ import type {
   WebStorageSnapshot,
 } from "../domain/models";
 import { fail, ok, SCHEMA_VERSION } from "../domain/models";
-import { hasDuplicateName, isEmptySnapshot, normalizeProfileName } from "../domain/profiles";
+import { hasDuplicateName, isEmptySnapshot, nextUpdatedAt, normalizeProfileName } from "../domain/profiles";
 import { resolveSiteScope } from "../domain/site-scope";
 import { AccountProfileSchema, WebStorageSnapshotSchema } from "../domain/schemas";
+import { unwrapWebStorageResponse } from "../domain/web-storage";
 import type { ProfileRepositoryStore } from "../infrastructure/profile-repository";
 import type { SiteOperationLock } from "../infrastructure/site-lock";
 
@@ -54,12 +56,8 @@ export class BackgroundOperations {
       const permission = await this.ensurePermission(scope);
       if (!permission.ok) return permission;
 
-      const repository = await this.deps.repository.load();
-      if (hasDuplicateName(repository.profiles, scope.registrableDomain, rawName)) {
-        return fail("DUPLICATE_PROFILE_NAME", "同一网站下账号名称不能重复。");
-      }
-
-      const snapshot = await this.captureSnapshot(tabId, scope);
+      const target = await this.deps.chrome.getDocumentTarget(tabId, scope.currentOrigin);
+      const snapshot = await this.captureSnapshot(target, scope);
       if (!snapshot.ok) return snapshot;
       if (isEmptySnapshot(snapshot.data.cookies, snapshot.data.webStorage)) {
         return fail("EMPTY_SNAPSHOT", "当前站点没有可保存的登录状态。");
@@ -77,8 +75,10 @@ export class BackgroundOperations {
         createdAt: now,
         updatedAt: now,
       };
-      await this.deps.repository.save({ schemaVersion: SCHEMA_VERSION, profiles: repository.profiles.concat(profile) });
-      return ok(profile);
+      return this.deps.repository.mutate((repository) => {
+        this.assertUniqueName(repository, profile);
+        return { repository: { schemaVersion: SCHEMA_VERSION, profiles: repository.profiles.concat(profile) }, result: ok(profile) };
+      });
     });
   }
 
@@ -90,34 +90,31 @@ export class BackgroundOperations {
     return this.withSiteLock(scope.registrableDomain, async () => {
       const permission = await this.ensurePermission(scope);
       if (!permission.ok) return permission;
-      const repository = await this.deps.repository.load();
-      const existing = repository.profiles.find((profile) => profile.id === profileId);
+      const existing = await this.deps.repository.findById(profileId);
       if (!existing) return fail("PROFILE_NOT_FOUND", "账号配置不存在。");
       if (existing.registrableDomain !== scope.registrableDomain) return fail("SITE_MISMATCH", "账号配置不属于当前网站。");
 
-      const snapshot = await this.captureSnapshot(tabId, scope);
+      const target = await this.deps.chrome.getDocumentTarget(tabId, scope.currentOrigin);
+      const snapshot = await this.captureSnapshot(target, scope);
       if (!snapshot.ok) return snapshot;
       if (isEmptySnapshot(snapshot.data.cookies, snapshot.data.webStorage)) {
         return fail("EMPTY_SNAPSHOT", "当前站点没有可覆盖保存的登录状态。");
       }
 
-      const updated: AccountProfile = {
-        ...existing,
+      return this.changeProfile(profileId, (latest) => ({
+        ...latest,
         cookies: snapshot.data.cookies,
-        webStorageByOrigin: { ...existing.webStorageByOrigin, [scope.currentOrigin]: snapshot.data.webStorage },
-        updatedAt: this.deps.now(),
-      };
-      await this.replaceProfile(repository, updated);
-      return ok(updated);
+        webStorageByOrigin: { ...latest.webStorageByOrigin, [scope.currentOrigin]: snapshot.data.webStorage },
+      }));
     });
   }
 
   async deleteProfile(profileId: string): Promise<OperationResult<{ profileId: string }>> {
-    const repository = await this.deps.repository.load();
-    const nextProfiles = repository.profiles.filter((profile) => profile.id !== profileId);
-    if (nextProfiles.length === repository.profiles.length) return fail("PROFILE_NOT_FOUND", "账号配置不存在。");
-    await this.deps.repository.save({ schemaVersion: SCHEMA_VERSION, profiles: nextProfiles });
-    return ok({ profileId });
+    return this.deps.repository.mutate((repository) => {
+      const nextProfiles = repository.profiles.filter((profile) => profile.id !== profileId);
+      if (nextProfiles.length === repository.profiles.length) throw operationFailure("PROFILE_NOT_FOUND", "账号配置不存在。");
+      return { repository: { schemaVersion: SCHEMA_VERSION, profiles: nextProfiles }, result: ok({ profileId }) };
+    });
   }
 
   async switchProfile(tabId: number, profileId: string): Promise<OperationResult<{ profileId: string }>> {
@@ -132,13 +129,14 @@ export class BackgroundOperations {
       if (!profile) return fail("PROFILE_NOT_FOUND", "账号配置不存在。");
       if (profile.registrableDomain !== scope.registrableDomain) return fail("SITE_MISMATCH", "账号配置不属于当前网站。");
 
+      const target = await this.deps.chrome.getDocumentTarget(tabId, scope.currentOrigin);
       try {
-        await this.clearSiteState(tabId, scope);
-        await this.restoreProfile(tabId, scope, profile);
-        await this.deps.chrome.reloadTab(tabId);
+        await this.clearSiteState(target, scope);
+        await this.restoreProfile(target, scope, profile);
+        await this.deps.chrome.reloadTab(target);
         return ok({ profileId });
       } catch (error) {
-        await this.cleanupAfterFailure(tabId, scope);
+        await this.cleanupAfterFailure(target, scope);
         const mapped = mapOperationFailure(error);
         return fail(mapped.code, mapped.message, mapped.details);
       }
@@ -153,9 +151,10 @@ export class BackgroundOperations {
     return this.withSiteLock(scope.registrableDomain, async () => {
       const permission = await this.ensurePermission(scope);
       if (!permission.ok) return permission;
+      const target = await this.deps.chrome.getDocumentTarget(tabId, scope.currentOrigin);
       try {
-        await this.clearSiteState(tabId, scope);
-        await this.deps.chrome.reloadTab(tabId);
+        await this.clearSiteState(target, scope);
+        await this.deps.chrome.reloadTab(target);
         return ok({ tabId });
       } catch (error) {
         const mapped = mapOperationFailure(error);
@@ -167,13 +166,16 @@ export class BackgroundOperations {
   async updateProfile(profile: AccountProfile): Promise<OperationResult<AccountProfile>> {
     const parsed = AccountProfileSchema.safeParse(profile);
     if (!parsed.success) return fail("IMPORT_INVALID", "账号配置字段非法。");
-    const repository = await this.deps.repository.load();
-    if (hasDuplicateName(repository.profiles, parsed.data.registrableDomain, parsed.data.name, parsed.data.id)) {
-      return fail("DUPLICATE_PROFILE_NAME", "同一网站下账号名称不能重复。");
-    }
-    const validatedProfile = parsed.data as AccountProfile;
-    await this.replaceProfile(repository, validatedProfile);
-    return ok(validatedProfile);
+    return this.changeProfile(profile.id, (latest) => {
+      if (latest.updatedAt !== profile.updatedAt) throw operationFailure("PROFILE_CONFLICT", "此账号已在其他位置修改，请重新载入后再编辑；当前草稿尚未保存。");
+      if (latest.registrableDomain !== profile.registrableDomain) throw operationFailure("SITE_MISMATCH", "不能修改账号所属网站。");
+      return { ...parsed.data, createdAt: latest.createdAt } as AccountProfile;
+    });
+  }
+
+  async renameProfile(profileId: string, name: string): Promise<OperationResult<AccountProfile>> {
+    if (!name.trim()) return fail("IMPORT_INVALID", "账号名称不能为空。");
+    return this.changeProfile(profileId, (latest) => ({ ...latest, name: name.trim(), normalizedName: normalizeProfileName(name) }));
   }
 
   async exportProfiles(scope: ExportScope): Promise<OperationResult<ExportBundle>> {
@@ -182,12 +184,13 @@ export class BackgroundOperations {
   }
 
   async importProfiles(bundle: ExportBundle): Promise<OperationResult<ProfileRepository>> {
-    const repository = await this.deps.repository.load();
     try {
-      const next = mergeImport(repository, bundle);
-      await this.deps.repository.save(next);
-      return ok(next);
+      return await this.deps.repository.mutate((repository) => {
+        const next = mergeImport(repository, bundle, this.deps.uuid, this.deps.now());
+        return { repository: next, result: ok(next) };
+      });
     } catch (error) {
+      if (isOperationError(error)) return { ok: false, error };
       return fail("IMPORT_INVALID", "导入文件格式或内容非法。", error instanceof Error ? error.message : String(error));
     }
   }
@@ -212,24 +215,25 @@ export class BackgroundOperations {
     return fail("PERMISSION_DENIED", "用户拒绝授权当前网站。");
   }
 
-  private async captureSnapshot(tabId: number, scope: SiteScope): Promise<OperationResult<{
+  private async captureSnapshot(target: DocumentTarget, scope: SiteScope): Promise<OperationResult<{
     cookies: AccountProfile["cookies"];
     webStorage: WebStorageSnapshot;
   }>> {
     try {
       const cookies = (await this.deps.chrome.getCookies(scope.registrableDomain)).map(fromChromeCookie);
-      const webStorage = await this.runWebStorageCommand<unknown>(tabId, { type: "readWebStorage" });
+      const webStorage = await this.runWebStorageCommand(target, { command: "read" });
       const parsed = WebStorageSnapshotSchema.safeParse(webStorage);
       if (!parsed.success) {
         return fail("WEB_STORAGE_READ_FAILED", "读取 Web Storage 失败。", parsed.error.issues.map((issue) => issue.message));
       }
       return ok({ cookies, webStorage: parsed.data as WebStorageSnapshot });
     } catch (error) {
+      if (isOperationError(error)) return { ok: false, error };
       return fail("COOKIE_READ_FAILED", "读取当前网站状态失败。", error instanceof Error ? error.message : String(error));
     }
   }
 
-  private async clearSiteState(tabId: number, scope: SiteScope): Promise<void> {
+  private async clearSiteState(target: DocumentTarget, scope: SiteScope): Promise<void> {
     try {
       const cookies = await this.deps.chrome.getCookies(scope.registrableDomain);
       for (const cookie of cookies.map(fromChromeCookie)) {
@@ -240,13 +244,13 @@ export class BackgroundOperations {
     }
 
     try {
-      await this.runWebStorageCommand(tabId, { type: "clearWebStorage" });
+      await this.runWebStorageCommand(target, { command: "clear" });
     } catch (cause) {
       throw operationFailure("WEB_STORAGE_CLEAR_FAILED", "清理 Web Storage 失败。", cause);
     }
   }
 
-  private async restoreProfile(tabId: number, scope: SiteScope, profile: AccountProfile): Promise<void> {
+  private async restoreProfile(target: DocumentTarget, scope: SiteScope, profile: AccountProfile): Promise<void> {
     const nowSeconds = Date.parse(this.deps.now()) / 1000;
     for (const cookie of profile.cookies) {
       if (isExpiredPersistentCookie(cookie, nowSeconds)) continue;
@@ -267,34 +271,50 @@ export class BackgroundOperations {
       sessionStorage: {},
     };
     try {
-      await this.runWebStorageCommand(tabId, { type: "writeWebStorage", snapshot });
+      await this.runWebStorageCommand(target, { command: "write", snapshot });
     } catch (cause) {
       throw operationFailure("WEB_STORAGE_WRITE_FAILED", "恢复 Web Storage 失败。", cause);
     }
   }
 
-  private async cleanupAfterFailure(tabId: number, scope: SiteScope): Promise<void> {
+  private async cleanupAfterFailure(target: DocumentTarget, scope: SiteScope): Promise<void> {
     try {
-      await this.clearSiteState(tabId, scope);
+      await this.clearSiteState(target, scope);
     } catch {
       // 切换失败时不刷新；保留原始失败给用户重试。
     }
   }
 
-  private async runWebStorageCommand<T>(tabId: number, message: Parameters<ChromeAdapter["sendTabMessage"]>[1]): Promise<T> {
+  private async runWebStorageCommand(target: DocumentTarget, command: { command: "read" | "clear" } | { command: "write"; snapshot: WebStorageSnapshot }): Promise<WebStorageSnapshot | true> {
+    const message = { type: "switchaccounts:storage:v2" as const, expectedOrigin: target.origin, ...command };
+    let response: unknown;
     try {
-      return await this.deps.chrome.sendTabMessage<T>(tabId, message);
+      response = await this.deps.chrome.sendTabMessage(target, message);
     } catch {
-      return this.deps.chrome.executeWebStorageCommand<T>(tabId, message);
+      response = undefined;
     }
+    // Old content scripts can ignore the versioned message without rejecting the transport.
+    if (response === undefined) response = await this.deps.chrome.executeWebStorageCommand(target, message);
+    return unwrapWebStorageResponse(response, message);
   }
 
-  private async replaceProfile(repository: ProfileRepository, profile: AccountProfile): Promise<void> {
-    const index = repository.profiles.findIndex((item) => item.id === profile.id);
-    if (index < 0) throw operationFailure("PROFILE_NOT_FOUND", "账号配置不存在。");
-    const nextProfiles = repository.profiles.slice();
-    nextProfiles[index] = profile;
-    await this.deps.repository.save({ schemaVersion: SCHEMA_VERSION, profiles: nextProfiles });
+  private async changeProfile(profileId: string, change: (profile: AccountProfile) => AccountProfile): Promise<OperationResult<AccountProfile>> {
+    return this.deps.repository.mutate((repository) => {
+      const index = repository.profiles.findIndex((profile) => profile.id === profileId);
+      const existing = repository.profiles[index];
+      if (!existing) throw operationFailure("PROFILE_NOT_FOUND", "账号配置不存在。");
+      const updated = { ...change(existing), updatedAt: nextUpdatedAt(existing.updatedAt, this.deps.now()) };
+      this.assertUniqueName(repository, updated);
+      const profiles = repository.profiles.slice();
+      profiles[index] = updated;
+      return { repository: { schemaVersion: SCHEMA_VERSION, profiles }, result: ok(updated) };
+    });
+  }
+
+  private assertUniqueName(repository: ProfileRepository, profile: AccountProfile): void {
+    if (hasDuplicateName(repository.profiles, profile.registrableDomain, profile.name, profile.id)) {
+      throw operationFailure("DUPLICATE_PROFILE_NAME", "同一网站下账号名称不能重复。");
+    }
   }
 
   private async withSiteLock<T>(

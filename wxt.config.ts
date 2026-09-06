@@ -4,6 +4,7 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifest: {
     name: "SwitchAccounts",
+    minimum_chrome_version: "119",
     description: "Save and switch local website login states.",
     permissions: ["cookies", "storage", "scripting", "sidePanel", "tabs"],
     optional_host_permissions: ["http://*/*", "https://*/*"],

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AccountProfile,
   BackgroundRequest,
   CurrentSiteData,
   OperationResult,
 } from "../../src/domain/models";
-import { normalizeProfileName, searchProfiles } from "../../src/domain/profiles";
+import { searchProfiles } from "../../src/domain/profiles";
 import { sendBackground } from "../../src/ui/client";
 import { toSafeErrorText } from "../../src/ui/errors";
 import "./style.css";
@@ -86,13 +86,7 @@ export default function SidePanelApp({ tabId, send = sendBackground, requestPerm
     const nextName = rawName.trim();
     if (!nextName || nextName === profile.name) return false;
     return run({
-      type: "updateProfile",
-      profile: {
-        ...profile,
-        name: nextName,
-        normalizedName: normalizeProfileName(nextName),
-        updatedAt: new Date().toISOString(),
-      },
+      type: "renameProfile", profileId: profile.id, name: nextName,
     });
   }
 
@@ -245,12 +239,17 @@ function ProfileTitleInput({ profile, disabled, onSave }: {
   onSave: (profile: AccountProfile, name: string) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState(profile.name);
+  const cancelBlur = useRef(false);
 
   useEffect(() => {
     setDraft(profile.name);
   }, [profile.id, profile.name]);
 
   async function commit(value: string) {
+    if (cancelBlur.current) {
+      cancelBlur.current = false;
+      return;
+    }
     const nextName = value.trim();
     if (!nextName) {
       setDraft(profile.name);
@@ -277,6 +276,7 @@ function ProfileTitleInput({ profile, disabled, onSave }: {
           event.currentTarget.blur();
         }
         if (event.key === "Escape") {
+          cancelBlur.current = true;
           setDraft(profile.name);
           event.currentTarget.blur();
         }

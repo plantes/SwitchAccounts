@@ -74,6 +74,12 @@ export interface CurrentSiteData {
   authorized: boolean;
 }
 
+export interface DocumentTarget {
+  tabId: number;
+  documentId: string;
+  origin: string;
+}
+
 export type BackgroundRequest =
   | { type: "getCurrentSite"; tabId: number }
   | { type: "listProfiles"; registrableDomain: string }
@@ -83,6 +89,7 @@ export type BackgroundRequest =
   | { type: "deleteProfile"; profileId: string }
   | { type: "resetSite"; tabId: number }
   | { type: "updateProfile"; profile: AccountProfile }
+  | { type: "renameProfile"; profileId: string; name: string }
   | { type: "importProfiles"; bundle: ExportBundle }
   | { type: "exportProfiles"; scope: ExportScope }
   | { type: "listAllProfiles" }
@@ -98,6 +105,8 @@ export interface OperationError {
     | "PROFILE_NOT_FOUND"
     | "DUPLICATE_PROFILE_NAME"
     | "SITE_MISMATCH"
+    | "SITE_CHANGED"
+    | "PROFILE_CONFLICT"
     | "COOKIE_READ_FAILED"
     | "COOKIE_CLEAR_FAILED"
     | "COOKIE_WRITE_FAILED"
@@ -115,21 +124,25 @@ export type OperationResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: OperationError };
 
-export type WebStorageCommand =
-  | { type: "readWebStorage" }
-  | { type: "clearWebStorage" }
-  | { type: "writeWebStorage"; snapshot: WebStorageSnapshot };
+export type WebStorageCommand = {
+  type: "switchaccounts:storage:v2";
+  expectedOrigin: string;
+} & (
+  | { command: "read" | "clear" | "check" | "reload" }
+  | { command: "write"; snapshot: WebStorageSnapshot }
+);
 
 export interface ChromeAdapter {
   getTab(tabId: number): Promise<chrome.tabs.Tab>;
+  getDocumentTarget(tabId: number, expectedOrigin: string): Promise<DocumentTarget>;
   containsOrigins(origins: string[]): Promise<boolean>;
   requestOrigins(origins: string[]): Promise<boolean>;
   getCookies(domain: string): Promise<chrome.cookies.Cookie[]>;
   removeCookie(details: chrome.cookies.CookieDetails): Promise<void>;
   setCookie(details: chrome.cookies.SetDetails): Promise<chrome.cookies.Cookie>;
-  reloadTab(tabId: number): Promise<void>;
-  sendTabMessage<T>(tabId: number, message: WebStorageCommand): Promise<T>;
-  executeWebStorageCommand<T>(tabId: number, message: WebStorageCommand): Promise<T>;
+  reloadTab(target: DocumentTarget): Promise<void>;
+  sendTabMessage(target: DocumentTarget, message: WebStorageCommand): Promise<unknown>;
+  executeWebStorageCommand(target: DocumentTarget, message: WebStorageCommand): Promise<unknown>;
   getAllOrigins(): Promise<string[]>;
   removeOrigins(origins: string[]): Promise<boolean>;
 }

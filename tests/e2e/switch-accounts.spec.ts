@@ -22,7 +22,7 @@ test("saves, switches, resets, exports and imports browser login states", async 
 
   await expectProfiles(extension, ["Account A", "Account B"]);
 
-  const switchToA = await extension.send<{ profileId: string }>({ type: "switchProfile", tabId, profileId: createdA.data.id });
+  const [switchToA] = await Promise.all([extension.send<{ profileId: string }>({ type: "switchProfile", tabId, profileId: createdA.data.id }), page.waitForEvent("load")]);
   expect(switchToA.ok).toBe(true);
   await page.waitForLoadState("load");
   await expectMainState(page, "A");
@@ -33,12 +33,12 @@ test("saves, switches, resets, exports and imports browser login states", async 
   await expect(subdomain.locator("#server-cookies")).not.toContainText("host_account=A");
   await subdomain.close();
 
-  const switchToB = await extension.send<{ profileId: string }>({ type: "switchProfile", tabId, profileId: createdB.data.id });
+  const [switchToB] = await Promise.all([extension.send<{ profileId: string }>({ type: "switchProfile", tabId, profileId: createdB.data.id }), page.waitForEvent("load")]);
   expect(switchToB.ok).toBe(true);
   await page.waitForLoadState("load");
   await expectMainState(page, "B");
 
-  const reset = await extension.send<{ tabId: number }>({ type: "resetSite", tabId });
+  const [reset] = await Promise.all([extension.send<{ tabId: number }>({ type: "resetSite", tabId }), page.waitForEvent("load")]);
   expect(reset.ok).toBe(true);
   await page.waitForLoadState("load");
   await expectMainState(page, "");
@@ -81,8 +81,9 @@ async function expectMainState(page: import("@playwright/test").Page, account: s
 async function waitForContentScript(extension: { extensionPage: import("@playwright/test").Page }, tabId: number) {
   await expect.poll(() => extension.extensionPage.evaluate(async (id) => {
     try {
-      const snapshot = await chrome.tabs.sendMessage(id, { type: "readWebStorage" });
-      return Boolean(snapshot?.origin);
+      const tab = await chrome.tabs.get(id);
+      const snapshot = await chrome.tabs.sendMessage(id, { type: "switchaccounts:storage:v2", command: "read", expectedOrigin: new URL(tab.url!).origin });
+      return Boolean(snapshot?.ok && snapshot?.data?.origin);
     } catch {
       return false;
     }

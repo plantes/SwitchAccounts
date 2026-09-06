@@ -4,6 +4,10 @@ export function normalizeProfileName(name: string): string {
   return name.trim().toLocaleLowerCase();
 }
 
+export function nextUpdatedAt(previous: string, now: string): string {
+  return new Date(Math.max(Date.parse(now), Date.parse(previous) + 1)).toISOString();
+}
+
 export function isEmptySnapshot(cookies: CookieSnapshot[], storage: WebStorageSnapshot): boolean {
   return cookies.length === 0
     && Object.keys(storage.localStorage).length === 0

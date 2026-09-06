@@ -28,28 +28,26 @@ function makeDeps(options: {
 } = {}) {
   let repository = options.repository ?? { schemaVersion: 2 as const, profiles: [] };
   const calls: string[] = [];
-  const sendTabMessage: ChromeAdapter["sendTabMessage"] = async <T,>(
-    _tabId: number,
+  const sendTabMessage: ChromeAdapter["sendTabMessage"] = async (
+    _target,
     message: Parameters<ChromeAdapter["sendTabMessage"]>[1],
-  ): Promise<T> => {
-    calls.push(message.type);
+  ) => {
+    calls.push(`${message.command}WebStorage`);
     if (options.failTabMessage) throw new Error("Could not establish connection. Receiving end does not exist.");
-    if (message.type === "readWebStorage" && options.missingWebStorageResponse) return undefined as T;
-    if (message.type === "readWebStorage") return (options.webStorage ?? storage) as T;
-    if (message.type === "writeWebStorage" && options.failWriteStorage) throw new Error("write failed");
-    return { ok: true } as T;
+    if (message.command === "read" && options.missingWebStorageResponse) return undefined;
+    if (message.command === "read") return { ok: true, data: options.webStorage ?? storage };
+    if (message.command === "write" && options.failWriteStorage) return { ok: false, error: { code: "WEB_STORAGE_WRITE_FAILED", message: "write failed" } };
+    return { ok: true, data: true };
   };
-  const executeWebStorageCommand = async <T,>(
-    _tabId: number,
-    message: Parameters<ChromeAdapter["sendTabMessage"]>[1],
-  ): Promise<T> => {
-    calls.push(`fallback:${message.type}`);
-    if (message.type === "readWebStorage") return (options.webStorage ?? storage) as T;
-    return { ok: true } as T;
+  const executeWebStorageCommand: ChromeAdapter["executeWebStorageCommand"] = async (_target, message) => {
+    calls.push(`fallback:${message.command}WebStorage`);
+    if (message.command === "read") return { ok: true, data: options.webStorage ?? storage };
+    return { ok: true, data: true };
   };
 
   const chrome = {
     getTab: vi.fn(async () => ({ id: 1, url: "https://app.example.com/page" }) as chrome.tabs.Tab),
+    getDocumentTarget: vi.fn(async () => ({ tabId: 1, origin: storage.origin, documentId: "document-a" })),
     containsOrigins: vi.fn(async () => options.authorized ?? true),
     requestOrigins: vi.fn(async () => options.requestGranted ?? true),
     getCookies: vi.fn(async () => options.cookies ?? []),
@@ -72,6 +70,7 @@ function makeDeps(options: {
       repository: {
         load: async () => repository,
         save: async (next) => { repository = next; },
+        mutate: async (change) => { const next = change(repository); repository = next.repository; return next.result; },
         listBySite: async (registrableDomain) => repository.profiles.filter((profile) => profile.registrableDomain === registrableDomain),
         findById: async (profileId) => repository.profiles.find((profile) => profile.id === profileId),
       },
@@ -187,9 +186,10 @@ describe("BackgroundOperations", () => {
     });
 
     await expect(ops.switchProfile(1, profile().id)).resolves.toMatchObject({ ok: true });
-    expect(chrome.executeWebStorageCommand).toHaveBeenCalledWith(1, { type: "clearWebStorage" });
-    expect(chrome.executeWebStorageCommand).toHaveBeenCalledWith(1, {
-      type: "writeWebStorage",
+    const target = { tabId: 1, origin: storage.origin, documentId: "document-a" };
+    expect(chrome.executeWebStorageCommand).toHaveBeenCalledWith(target, { type: "switchaccounts:storage:v2", command: "clear", expectedOrigin: storage.origin });
+    expect(chrome.executeWebStorageCommand).toHaveBeenCalledWith(target, {
+      type: "switchaccounts:storage:v2", command: "write", expectedOrigin: storage.origin,
       snapshot: storage,
     });
     expect(calls).toEqual([
@@ -211,11 +211,10 @@ describe("BackgroundOperations", () => {
   });
 });
 describe("BackgroundOperations defensive browser boundaries", () => {
-  it("Web Storage 无响应时返回读取失败而不是写入非法仓库", async () => {
+  it("旧内容脚本未响应时通过备用脚本读取有效快照", async () => {
     const { ops } = makeDeps({ missingWebStorageResponse: true });
     await expect(ops.createProfile(1, "Work")).resolves.toMatchObject({
-      ok: false,
-      error: { code: "WEB_STORAGE_READ_FAILED" },
+      ok: true,
     });
   });
 });

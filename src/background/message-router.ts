@@ -13,6 +13,7 @@ type Operations = Pick<BackgroundOperations,
   | "deleteProfile"
   | "resetSite"
   | "updateProfile"
+  | "renameProfile"
   | "importProfiles"
   | "exportProfiles"
   | "listGrantedSites"
@@ -26,7 +27,14 @@ export function createMessageRouter(operations: Operations) {
       if (!parsed.success) {
         return fail("IMPORT_INVALID", "后台消息格式非法。");
       }
-      return dispatch(operations, parsed.data as BackgroundRequest);
+      try {
+        return await dispatch(operations, parsed.data as BackgroundRequest);
+      } catch (error) {
+        if (typeof error === "object" && error !== null && "code" in error && "message" in error) {
+          return { ok: false, error: error as import("../domain/models").OperationError };
+        }
+        return fail("STORAGE_WRITE_FAILED", "操作未完成，请重试。");
+      }
     },
   };
 }
@@ -51,6 +59,8 @@ function dispatch(operations: Operations, request: BackgroundRequest): Promise<O
       return operations.resetSite(request.tabId);
     case "updateProfile":
       return operations.updateProfile(request.profile);
+    case "renameProfile":
+      return operations.renameProfile(request.profileId, request.name);
     case "importProfiles":
       return operations.importProfiles(request.bundle);
     case "exportProfiles":

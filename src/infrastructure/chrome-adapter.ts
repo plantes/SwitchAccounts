@@ -1,8 +1,18 @@
-import type { ChromeAdapter, WebStorageCommand } from "../domain/models";
+import type { ChromeAdapter, DocumentTarget, WebStorageCommand } from "../domain/models";
+import { unwrapWebStorageResponse } from "../domain/web-storage";
+import { runWebStorageCommandInTab } from "./web-storage-script";
 
 export class BrowserChromeAdapter implements ChromeAdapter {
   async getTab(tabId: number): Promise<chrome.tabs.Tab> {
     return chrome.tabs.get(tabId);
+  }
+
+  async getDocumentTarget(tabId: number, expectedOrigin: string): Promise<DocumentTarget> {
+    const [result] = await chrome.scripting.executeScript({ target: { tabId }, func: () => location.origin });
+    if (!result?.documentId || result.result !== expectedOrigin) {
+      throw { code: "SITE_CHANGED", message: "页面已跳转，请在当前页面重新操作。" };
+    }
+    return { tabId, documentId: result.documentId, origin: expectedOrigin };
   }
 
   async containsOrigins(origins: string[]): Promise<boolean> {
@@ -14,7 +24,7 @@ export class BrowserChromeAdapter implements ChromeAdapter {
   }
 
   async getCookies(domain: string): Promise<chrome.cookies.Cookie[]> {
-    return chrome.cookies.getAll({ domain });
+    return chrome.cookies.getAll({ domain, partitionKey: {} });
   }
 
   async removeCookie(details: chrome.cookies.CookieDetails): Promise<void> {
@@ -27,23 +37,25 @@ export class BrowserChromeAdapter implements ChromeAdapter {
     return cookie;
   }
 
-  async reloadTab(tabId: number): Promise<void> {
-    await chrome.tabs.reload(tabId);
+  async reloadTab(target: DocumentTarget): Promise<void> {
+    const message: WebStorageCommand = { type: "switchaccounts:storage:v2", command: "reload", expectedOrigin: target.origin };
+    unwrapWebStorageResponse(await this.executeWebStorageCommand(target, message), message);
   }
 
-  async sendTabMessage<T>(tabId: number, message: WebStorageCommand): Promise<T> {
-    return chrome.tabs.sendMessage(tabId, message);
+  async sendTabMessage(target: DocumentTarget, message: WebStorageCommand): Promise<unknown> {
+    return chrome.tabs.sendMessage(target.tabId, message, { documentId: target.documentId });
   }
 
-  async executeWebStorageCommand<T>(tabId: number, message: WebStorageCommand): Promise<T> {
-    const [result] = await chrome.scripting.executeScript<[WebStorageCommand], unknown>({
-      target: { tabId },
+  async executeWebStorageCommand(target: DocumentTarget, message: WebStorageCommand): Promise<unknown> {
+    const [result] = await chrome.scripting.executeScript<[string], unknown>({
+      target: { tabId: target.tabId, documentIds: [target.documentId] },
       injectImmediately: true,
       func: runWebStorageCommandInTab,
-      args: [message],
+      // Chrome's scripting argument conversion can drop special object keys such as __proto__.
+      args: [JSON.stringify(message)],
     });
     if (!result) throw new Error("Web Storage script did not return a result");
-    return result.result as T;
+    return result.result;
   }
 
   async getAllOrigins(): Promise<string[]> {
@@ -54,43 +66,4 @@ export class BrowserChromeAdapter implements ChromeAdapter {
   async removeOrigins(origins: string[]): Promise<boolean> {
     return chrome.permissions.remove({ origins });
   }
-}
-
-function runWebStorageCommandInTab(message: WebStorageCommand): unknown {
-  function dumpStorage(storage: Storage): Record<string, string> {
-    const data: Record<string, string> = {};
-    for (let index = 0; index < storage.length; index += 1) {
-      const key = storage.key(index);
-      if (key !== null) data[key] = storage.getItem(key) ?? "";
-    }
-    return data;
-  }
-
-  if (message.type === "readWebStorage") {
-    return {
-      origin: location.origin,
-      localStorage: dumpStorage(localStorage),
-      sessionStorage: dumpStorage(sessionStorage),
-    };
-  }
-  if (message.type === "clearWebStorage") {
-    localStorage.clear();
-    sessionStorage.clear();
-    return { ok: true };
-  }
-  if (message.type === "writeWebStorage") {
-    if (message.snapshot.origin !== location.origin) {
-      throw new Error("Origin mismatch");
-    }
-    localStorage.clear();
-    sessionStorage.clear();
-    for (const [key, value] of Object.entries(message.snapshot.localStorage)) {
-      localStorage.setItem(key, value);
-    }
-    for (const [key, value] of Object.entries(message.snapshot.sessionStorage)) {
-      sessionStorage.setItem(key, value);
-    }
-    return { ok: true };
-  }
-  throw new Error("Unsupported Web Storage command");
 }

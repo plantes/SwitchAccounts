@@ -10,7 +10,7 @@ export const CookiePartitionKeySchema = z.strictObject({
 });
 
 export const CookieSnapshotSchema = z.strictObject({
-  name: z.string().min(1),
+  name: z.string(),
   value: z.string(),
   domain: z.string().min(1),
   hostOnly: z.boolean(),
@@ -31,10 +31,15 @@ export const CookieSnapshotSchema = z.strictObject({
   }
 });
 
+// Validate without rebuilding: object parsers may omit the legal storage key __proto__.
+const StorageValuesSchema = z.custom<Record<string, string>>((value) =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+  && Object.values(value).every((item) => typeof item === "string"));
+
 export const WebStorageSnapshotSchema = z.strictObject({
   origin: z.string().url(),
-  localStorage: z.record(z.string(), z.string()),
-  sessionStorage: z.record(z.string(), z.string()),
+  localStorage: StorageValuesSchema,
+  sessionStorage: StorageValuesSchema,
 });
 
 export const AccountProfileSchema = z.strictObject({
@@ -62,9 +67,17 @@ export const AccountProfileSchema = z.strictObject({
   });
 });
 
-export const ProfileRepositorySchema = z.strictObject({
+export const StoredProfilesSchema = z.strictObject({
   schemaVersion: z.literal(2),
   profiles: z.array(AccountProfileSchema),
+});
+
+export const ProfileRepositorySchema = StoredProfilesSchema.superRefine((repository, ctx) => {
+  const ids = new Set<string>();
+  repository.profiles.forEach((profile, index) => {
+    if (ids.has(profile.id)) ctx.addIssue({ code: "custom", path: ["profiles", index, "id"], message: "Duplicate profile ID" });
+    ids.add(profile.id);
+  });
 });
 
 export const ExportBundleSchema = z.strictObject({
@@ -84,12 +97,13 @@ export const ExportScopeSchema = z.discriminatedUnion("type", [
 export const BackgroundRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("getCurrentSite"), tabId: z.number().int().nonnegative() }),
   z.strictObject({ type: z.literal("listProfiles"), registrableDomain: z.string().min(1) }),
-  z.strictObject({ type: z.literal("createProfile"), tabId: z.number().int().nonnegative(), name: z.string().min(1) }),
+  z.strictObject({ type: z.literal("createProfile"), tabId: z.number().int().nonnegative(), name: z.string().trim().min(1) }),
   z.strictObject({ type: z.literal("overwriteProfile"), tabId: z.number().int().nonnegative(), profileId: z.string().uuid() }),
   z.strictObject({ type: z.literal("switchProfile"), tabId: z.number().int().nonnegative(), profileId: z.string().uuid() }),
   z.strictObject({ type: z.literal("deleteProfile"), profileId: z.string().uuid() }),
   z.strictObject({ type: z.literal("resetSite"), tabId: z.number().int().nonnegative() }),
   z.strictObject({ type: z.literal("updateProfile"), profile: AccountProfileSchema }),
+  z.strictObject({ type: z.literal("renameProfile"), profileId: z.string().uuid(), name: z.string().trim().min(1) }),
   z.strictObject({ type: z.literal("importProfiles"), bundle: ExportBundleSchema }),
   z.strictObject({ type: z.literal("exportProfiles"), scope: ExportScopeSchema }),
   z.strictObject({ type: z.literal("listAllProfiles") }),

@@ -108,12 +108,9 @@ describe("SidePanelApp", () => {
     await userEvent.keyboard("小号 月卡 18号{Enter}");
 
     await waitFor(() => expect(send).toHaveBeenCalledWith({
-      type: "updateProfile",
-      profile: expect.objectContaining({
-        id: profile.id,
-        name: "小号 月卡 18号",
-        normalizedName: "小号 月卡 18号",
-      }),
+      type: "renameProfile",
+      profileId: profile.id,
+      name: "小号 月卡 18号",
     }));
   });
 });

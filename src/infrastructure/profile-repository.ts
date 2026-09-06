@@ -1,12 +1,13 @@
 import type { AccountProfile, OperationError, ProfileRepository } from "../domain/models";
 import { SCHEMA_VERSION } from "../domain/models";
-import { ProfileRepositorySchema } from "../domain/schemas";
+import { ProfileRepositorySchema, StoredProfilesSchema } from "../domain/schemas";
 
 const STORAGE_KEY = "profileRepository";
 
 export interface ProfileRepositoryStore {
   load(): Promise<ProfileRepository>;
   save(repository: ProfileRepository): Promise<void>;
+  mutate<T>(change: (repository: ProfileRepository) => { repository: ProfileRepository; result: T }): Promise<T>;
   listBySite(registrableDomain: string): Promise<AccountProfile[]>;
   findById(profileId: string): Promise<AccountProfile | undefined>;
 }
@@ -14,18 +15,54 @@ export interface ProfileRepositoryStore {
 type StorageArea = Pick<chrome.storage.StorageArea, "get" | "set">;
 
 export class ChromeProfileRepository implements ProfileRepositoryStore {
+  private tail: Promise<unknown> = Promise.resolve();
   constructor(private readonly storage: StorageArea = chrome.storage.local) {}
 
   async load(): Promise<ProfileRepository> {
+    return this.enqueue(() => this.read());
+  }
+
+  private async read(): Promise<ProfileRepository> {
     const items = await this.storage.get(STORAGE_KEY);
     const value = (items as Record<string, unknown>)[STORAGE_KEY];
     if (value === undefined) {
       return { schemaVersion: SCHEMA_VERSION, profiles: [] };
     }
-    return ProfileRepositorySchema.parse(value) as ProfileRepository;
+    const repository = StoredProfilesSchema.parse(value) as ProfileRepository;
+    const ids = new Set<string>();
+    const reserved = new Set(repository.profiles.map((profile) => profile.id));
+    let repaired = false;
+    for (const profile of repository.profiles) {
+      if (ids.has(profile.id)) {
+        do { profile.id = crypto.randomUUID(); } while (reserved.has(profile.id));
+        reserved.add(profile.id);
+        repaired = true;
+      }
+      ids.add(profile.id);
+    }
+    if (repaired) await this.write(repository);
+    return ProfileRepositorySchema.parse(repository) as ProfileRepository;
   }
 
   async save(repository: ProfileRepository): Promise<void> {
+    return this.enqueue(() => this.write(repository));
+  }
+
+  async mutate<T>(change: (repository: ProfileRepository) => { repository: ProfileRepository; result: T }): Promise<T> {
+    return this.enqueue(async () => {
+      const { repository, result } = change(await this.read());
+      await this.write(repository);
+      return result;
+    });
+  }
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.tail.then(operation);
+    this.tail = pending.catch(() => undefined);
+    return pending;
+  }
+
+  private async write(repository: ProfileRepository): Promise<void> {
     const parsed = ProfileRepositorySchema.parse(repository) as ProfileRepository;
     try {
       await this.storage.set({ [STORAGE_KEY]: parsed });

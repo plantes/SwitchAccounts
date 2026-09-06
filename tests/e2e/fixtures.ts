@@ -33,7 +33,8 @@ export const test = base.extend<Fixtures>({
     const extensionPath = await prepareGrantedExtension();
     const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "switchaccounts-e2e-"));
     const context = await chromium.launchPersistentContext(userDataDir, {
-      headless: false,
+      channel: "chromium",
+      headless: true,
       args: [
         `--disable-extensions-except=${extensionPath}`,
         `--load-extension=${extensionPath}`,
@@ -54,7 +55,9 @@ export const test = base.extend<Fixtures>({
       extensionId,
       worker,
       extensionPage,
-      send: (request) => extensionPage.evaluate((message) => chrome.runtime.sendMessage(message), request),
+      // JSON avoids Playwright's object serializer treating __proto__ as a prototype setter.
+      send: async (request) => JSON.parse(await extensionPage.evaluate(async (message) =>
+        JSON.stringify(await chrome.runtime.sendMessage(JSON.parse(message))), JSON.stringify(request))),
       tabIdFor: async (urlPart) => {
         const tabs = await extensionPage.evaluate(() => chrome.tabs.query({}));
         const tab = tabs.find((candidate) => candidate.url?.includes(urlPart));
@@ -67,8 +70,10 @@ export const test = base.extend<Fixtures>({
       await use(fixture);
     } finally {
       await context.close();
-      await fs.rm(path.dirname(extensionPath), { recursive: true, force: true });
-      await fs.rm(userDataDir, { recursive: true, force: true });
+      if (process.env.SWITCHACCOUNTS_KEEP_E2E_ARTIFACTS !== "1") {
+        await fs.rm(path.dirname(extensionPath), { recursive: true, force: true });
+        await fs.rm(userDataDir, { recursive: true, force: true });
+      }
     }
   },
 });

@@ -592,6 +592,10 @@ li {
   }
 }
 
+.editor-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
+.editor-status { grid-column: 1 / -1; display: grid; gap: 10px; }
+.cookie-row[hidden] { display: none; }
+
 /* Workspace navigation and global tools redesign */
 .options-shell.accounts-mode {
   grid-template-columns: 112px minmax(320px, 352px) minmax(0, 1fr);

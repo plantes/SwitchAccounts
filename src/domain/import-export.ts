@@ -6,7 +6,7 @@ import type {
   ProfileRepository,
 } from "./models";
 import { SCHEMA_VERSION } from "./models";
-import { normalizeProfileName } from "./profiles";
+import { nextUpdatedAt, normalizeProfileName } from "./profiles";
 import { ExportBundleSchema, ProfileRepositorySchema } from "./schemas";
 
 export function selectProfiles(repository: ProfileRepository, scope: ExportScope): AccountProfile[] {
@@ -55,12 +55,21 @@ export function previewImport(current: ProfileRepository, unknownBundle: unknown
   };
 }
 
-export function mergeImport(current: ProfileRepository, unknownBundle: unknown): ProfileRepository {
+export function mergeImport(current: ProfileRepository, unknownBundle: unknown, uuid: () => string = () => crypto.randomUUID(), now = new Date().toISOString()): ProfileRepository {
   const { bundle } = previewImport(current, unknownBundle);
   const importedByKey = new Map(bundle.profiles.map((profile) => [profileConflictKey(profile), profile]));
-  const mergedProfiles = current.profiles
-    .filter((profile) => !importedByKey.has(profileConflictKey(profile)))
-    .concat(bundle.profiles);
+  const mergedProfiles = current.profiles.filter((profile) => !importedByKey.has(profileConflictKey(profile)));
+  const existingByKey = new Map(current.profiles.map((profile) => [profileConflictKey(profile), profile]));
+  const usedIds = new Set(current.profiles.map((profile) => profile.id));
+  for (const incoming of bundle.profiles) {
+    const existing = existingByKey.get(profileConflictKey(incoming));
+    let id = existing?.id ?? incoming.id;
+    if (!existing && usedIds.has(id)) {
+      do { id = uuid(); } while (usedIds.has(id));
+    }
+    usedIds.add(id);
+    mergedProfiles.push({ ...incoming, id, updatedAt: existing ? nextUpdatedAt(existing.updatedAt, now) : incoming.updatedAt });
+  }
   const next: ProfileRepository = { schemaVersion: SCHEMA_VERSION, profiles: mergedProfiles };
   return ProfileRepositorySchema.parse(next) as ProfileRepository;
 }

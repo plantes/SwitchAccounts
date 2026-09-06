@@ -8,16 +8,15 @@ import {
   Wrench,
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
-import type { AccountProfile, BackgroundRequest, CookieSnapshot, ExportBundle, OperationResult, WebStorageSnapshot } from "../../src/domain/models";
+import type { AccountProfile, BackgroundRequest, ExportBundle, ImportPreview, OperationResult } from "../../src/domain/models";
 import { SCHEMA_VERSION } from "../../src/domain/models";
 import { previewImport } from "../../src/domain/import-export";
-import { normalizeProfileName, searchProfiles } from "../../src/domain/profiles";
+import { CookieTab, OverviewTab, WebStorageTab } from "./ProfileEditors";
 import { sendBackground } from "../../src/ui/client";
 import { toSafeErrorText } from "../../src/ui/errors";
 import "./style.css";
 
 type Send = (request: BackgroundRequest) => Promise<OperationResult<unknown>>;
-type StorageKind = "localStorage" | "sessionStorage";
 type WorkspaceView = "accounts" | "tools";
 type ActiveTab = "overview" | "cookies" | "storage";
 
@@ -27,7 +26,7 @@ const tabs: { id: ActiveTab; label: string }[] = [
   { id: "storage", label: "Web Storage" },
 ];
 
-export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
+export default function OptionsApp({ send: transport = sendBackground }: { send?: Send }) {
   const [profiles, setProfiles] = useState<AccountProfile[]>([]);
   const [origins, setOrigins] = useState<string[]>([]);
   const [query, setQuery] = useState("");
@@ -35,26 +34,55 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
   const [selectedId, setSelectedId] = useState("");
   const [activeView, setActiveView] = useState<WorkspaceView>("accounts");
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
+  const [hasDraft, setHasDraft] = useState(false);
+  const [editorRevision, setEditorRevision] = useState(0);
+
+  async function send(request: BackgroundRequest): Promise<OperationResult<unknown>> {
+    try {
+      const result = await transport(request);
+      if (!result.ok) setError(toSafeErrorText(result.error));
+      return result;
+    } catch {
+      const error = { code: "STORAGE_WRITE_FAILED" as const, message: "操作未完成，请重试。" };
+      setError(error.message);
+      return { ok: false, error };
+    }
+  }
+
+  function leaveEditor(action: () => void) {
+    if (hasDraft && !window.confirm("放弃当前未保存修改？")) return;
+    setHasDraft(false);
+    setEditorRevision(current => current + 1);
+    action();
+  }
+
+  useEffect(() => {
+    function beforeUnload(event: BeforeUnloadEvent) {
+      if (hasDraft) { event.preventDefault(); event.returnValue = ""; }
+    }
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [hasDraft]);
 
   async function load() {
+    setError("");
     const [profileResult, originsResult] = await Promise.all([
       send({ type: "listAllProfiles" }) as Promise<OperationResult<AccountProfile[]>>,
       send({ type: "listGrantedSites" }) as Promise<OperationResult<string[]>>,
     ]);
     if (profileResult.ok) setProfiles(profileResult.data);
-    else setError(toSafeErrorText(profileResult.error));
+    else throw new Error(toSafeErrorText(profileResult.error));
     if (originsResult.ok) setOrigins(originsResult.data);
   }
 
   useEffect(() => {
-    void load();
+    void load().catch(() => undefined);
   }, []);
 
   const filtered = useMemo(() => {
-    const byName = searchProfiles(profiles, query);
     const needle = query.trim().toLocaleLowerCase();
-    if (!needle) return byName;
-    return byName.filter((profile) => profile.registrableDomain.toLocaleLowerCase().includes(needle)
+    if (!needle) return profiles;
+    return profiles.filter((profile) => profile.registrableDomain.toLocaleLowerCase().includes(needle)
       || profile.name.toLocaleLowerCase().includes(needle));
   }, [profiles, query]);
 
@@ -62,15 +90,15 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
 
   return (
     <main className={`options-shell ${activeView === "tools" ? "tools-mode" : "accounts-mode"}`}>
-      <AppRail activeView={activeView} onChange={setActiveView} />
+      <AppRail activeView={activeView} onChange={view => leaveEditor(() => setActiveView(view))} />
 
       {activeView === "accounts" && (
         <AccountSidebar
           profiles={filtered}
           query={query}
           selectedId={selected?.id ?? ""}
-          onQueryChange={setQuery}
-          onSelect={setSelectedId}
+          onQueryChange={value => leaveEditor(() => setQuery(value))}
+          onSelect={id => leaveEditor(() => setSelectedId(id))}
         />
       )}
 
@@ -81,21 +109,21 @@ export default function OptionsApp({ send = sendBackground }: { send?: Send }) {
         ) : selected ? (
           <>
             <AccountSummary profile={selected} />
-            <TabNav activeTab={activeTab} onChange={setActiveTab} />
+            <TabNav activeTab={activeTab} onChange={tab => leaveEditor(() => setActiveTab(tab))} />
             <section className="tab-surface">
               {activeTab === "overview" && (
                 <TabPanel id="overview" label="概览">
-                  <OverviewTab profile={selected} send={send} onSaved={load} />
+                  <OverviewTab key={`${selected.id}-${editorRevision}`} profile={selected} send={send} onSaved={load} onDirtyChange={setHasDraft} />
                 </TabPanel>
               )}
               {activeTab === "cookies" && (
                 <TabPanel id="cookies" label="Cookie">
-                  <CookieTab profile={selected} send={send} onSaved={load} />
+                  <CookieTab key={`${selected.id}-${editorRevision}`} profile={selected} send={send} onSaved={load} onDirtyChange={setHasDraft} />
                 </TabPanel>
               )}
               {activeTab === "storage" && (
                 <TabPanel id="storage" label="Web Storage">
-                  <WebStorageTab profile={selected} send={send} onSaved={load} />
+                  <WebStorageTab key={`${selected.id}-${editorRevision}`} profile={selected} send={send} onSaved={load} onDirtyChange={setHasDraft} />
                 </TabPanel>
               )}
             </section>
@@ -231,201 +259,6 @@ function TabPanel({ id, label, children }: { id: ActiveTab; label: string; child
     <section id={`panel-${id}`} role="tabpanel" aria-labelledby={`tab-${id}`} aria-label={label} className="tab-panel">
       {children}
     </section>
-  );
-}
-
-function OverviewTab({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
-  const [name, setName] = useState(profile.name);
-
-  useEffect(() => {
-    setName(profile.name);
-  }, [profile.id, profile.name]);
-
-  async function save() {
-    await send({
-      type: "updateProfile",
-      profile: { ...profile, name: name.trim(), normalizedName: normalizeProfileName(name), updatedAt: new Date().toISOString() },
-    });
-    await onSaved();
-  }
-
-  async function remove() {
-    if (!window.confirm(`删除 ${profile.name}？不会修改当前网站。`)) return;
-    await send({ type: "deleteProfile", profileId: profile.id });
-    await onSaved();
-  }
-
-  return (
-    <div className="overview-grid">
-      <label className="wide-field">账号名称<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <div className="stat-card">
-        <strong>{profile.cookies.length}</strong>
-        <span>Cookies</span>
-      </div>
-      <div className="stat-card">
-        <strong>{Object.keys(profile.webStorageByOrigin).length}</strong>
-        <span>Origins</span>
-      </div>
-      <div className="button-row overview-actions">
-        <button type="button" onClick={() => void save()}>保存账号信息</button>
-        <button type="button" className="danger" onClick={() => void remove()}>删除账号</button>
-      </div>
-    </div>
-  );
-}
-
-function CookieTab({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
-  const [filter, setFilter] = useState("");
-  const visibleCookies = profile.cookies.filter((cookie) => {
-    const haystack = `${cookie.name} ${cookie.domain} ${cookie.path}`.toLocaleLowerCase();
-    return haystack.includes(filter.trim().toLocaleLowerCase());
-  });
-
-  async function updateCookie(index: number, patch: Partial<CookieSnapshot>) {
-    const cookies = profile.cookies.slice();
-    const current = cookies[index];
-    if (!current) return;
-    const next: CookieSnapshot = { ...current, ...patch };
-    if (next.session) delete next.expirationDate;
-    if (!next.name.trim()) return window.alert("Cookie 名称不能为空。");
-    if (!next.path.startsWith("/")) return window.alert("Cookie path 必须以 / 开始。");
-    if (next.sameSite === "no_restriction" && !next.secure) return window.alert("SameSite=None 必须启用 Secure。");
-    if (!next.session && (next.expirationDate === undefined || !Number.isFinite(next.expirationDate) || next.expirationDate <= 0)) {
-      return window.alert("Persistent Cookie 必须设置有效的 Expiration。");
-    }
-    cookies[index] = next;
-    await send({ type: "updateProfile", profile: { ...profile, cookies, updatedAt: new Date().toISOString() } });
-    await onSaved();
-  }
-
-  async function deleteCookie(index: number) {
-    const cookies = profile.cookies.filter((_, currentIndex) => currentIndex !== index);
-    await send({ type: "updateProfile", profile: { ...profile, cookies, updatedAt: new Date().toISOString() } });
-    await onSaved();
-  }
-
-  return (
-    <div className="editor-block">
-      <label>Cookie 搜索<input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="名称、域名或路径" /></label>
-      {visibleCookies.map((cookie) => {
-        const index = profile.cookies.indexOf(cookie);
-        return (
-          <article key={`${cookie.name}-${cookie.domain}-${cookie.path}-${index}`} className="cookie-row">
-            <div className="record-head">
-              <strong>{cookie.name}</strong>
-              <small><span>{cookie.domain}</span><span>{cookie.path}</span></small>
-            </div>
-            <label>名称<input value={cookie.name} onChange={(event) => void updateCookie(index, { name: event.target.value })} /></label>
-            <label>
-              值
-              <textarea value={formatJsonValue(cookie.value)} onChange={(event) => void updateCookie(index, { value: event.target.value })} />
-            </label>
-            <label>域名<input value={cookie.domain} onChange={(event) => void updateCookie(index, { domain: event.target.value })} /></label>
-            <label>路径<input value={cookie.path} onChange={(event) => void updateCookie(index, { path: event.target.value })} /></label>
-            <label><input type="checkbox" checked={cookie.secure} onChange={(event) => void updateCookie(index, { secure: event.target.checked })} /> Secure</label>
-            <label><input type="checkbox" checked={cookie.httpOnly} onChange={(event) => void updateCookie(index, { httpOnly: event.target.checked })} /> HttpOnly</label>
-            <label>
-              SameSite
-              <select value={cookie.sameSite} onChange={(event) => void updateCookie(index, { sameSite: event.target.value as CookieSnapshot["sameSite"] })}>
-                <option value="lax">Lax</option>
-                <option value="strict">Strict</option>
-                <option value="no_restriction">None</option>
-                <option value="unspecified">Unspecified</option>
-              </select>
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={cookie.session}
-                onChange={(event) => void updateCookie(index, event.target.checked
-                  ? { session: true }
-                  : { session: false, expirationDate: cookie.expirationDate ?? Math.floor(Date.now() / 1000) + 31_536_000 })}
-              /> Session cookie
-            </label>
-            <label>
-              Expiration
-              <input
-                type="number"
-                min="1"
-                disabled={cookie.session}
-                value={cookie.expirationDate ?? ""}
-                onChange={(event) => {
-                  const value = event.target.value.trim();
-                  if (!value) return window.alert("Persistent Cookie 必须设置有效的 Expiration。");
-                  void updateCookie(index, { expirationDate: Number(value) });
-                }}
-              />
-            </label>
-            <small className="record-meta">hostOnly: {String(cookie.hostOnly)} · storeId: {cookie.storeId}{cookie.partitionKey ? " · partitioned" : ""}</small>
-            <button type="button" className="danger" onClick={() => void deleteCookie(index)}>删除 Cookie</button>
-          </article>
-        );
-      })}
-      {visibleCookies.length === 0 && <p className="muted">没有匹配的 Cookie。</p>}
-    </div>
-  );
-}
-
-function WebStorageTab({ profile, send, onSaved }: { profile: AccountProfile; send: Send; onSaved: () => Promise<void> }) {
-  async function updateStorage(origin: string, kind: StorageKind, key: string, value: string) {
-    const snapshot = profile.webStorageByOrigin[origin];
-    if (!snapshot) return;
-    const nextSnapshot: WebStorageSnapshot = {
-      ...snapshot,
-      [kind]: { ...snapshot[kind], [key]: value },
-    };
-    await send({
-      type: "updateProfile",
-      profile: {
-        ...profile,
-        webStorageByOrigin: { ...profile.webStorageByOrigin, [origin]: nextSnapshot },
-        updatedAt: new Date().toISOString(),
-      },
-    });
-    await onSaved();
-  }
-
-  async function deleteStorage(origin: string, kind: StorageKind, key: string) {
-    const snapshot = profile.webStorageByOrigin[origin];
-    if (!snapshot) return;
-    const nextValues = { ...snapshot[kind] };
-    delete nextValues[key];
-    const nextSnapshot: WebStorageSnapshot = { ...snapshot, [kind]: nextValues };
-    await send({
-      type: "updateProfile",
-      profile: {
-        ...profile,
-        webStorageByOrigin: { ...profile.webStorageByOrigin, [origin]: nextSnapshot },
-        updatedAt: new Date().toISOString(),
-      },
-    });
-    await onSaved();
-  }
-
-  const entries = Object.entries(profile.webStorageByOrigin);
-
-  return (
-    <div className="editor-block">
-      {entries.map(([origin, snapshot]) => (
-        <section key={origin} className="storage-origin">
-          <h3>{origin}</h3>
-          {(["localStorage", "sessionStorage"] as const).map((kind) => (
-            <div key={kind} className="storage-kind">
-              <strong>{kind}</strong>
-              {Object.entries(snapshot[kind]).map(([key, value]) => (
-                <div key={`${kind}-${key}`} className="storage-row">
-                  <span>{key}</span>
-                  <textarea value={formatJsonValue(value)} onChange={(event) => void updateStorage(origin, kind, key, event.target.value)} />
-                  <button type="button" className="danger" onClick={() => void deleteStorage(origin, kind, key)}>删除</button>
-                </div>
-              ))}
-              <StorageAddForm kind={kind} onAdd={(key, value) => updateStorage(origin, kind, key, value)} />
-            </div>
-          ))}
-        </section>
-      ))}
-      {entries.length === 0 && <p className="muted">这个账号没有保存 Web Storage。</p>}
-    </div>
   );
 }
 
@@ -588,49 +421,52 @@ function ToolsTab({ profiles, origins, send, onChanged }: {
   );
 }
 
-function StorageAddForm({ kind, onAdd }: { kind: StorageKind; onAdd: (key: string, value: string) => Promise<void> }) {
-  const [key, setKey] = useState("");
-  const [value, setValue] = useState("");
-
-  async function add() {
-    const cleanKey = key.trim();
-    if (!cleanKey) return window.alert("Storage key 不能为空。");
-    await onAdd(cleanKey, value);
-    setKey("");
-    setValue("");
-  }
-
-  return (
-    <div className="storage-row add-row">
-      <input aria-label={`${kind} key`} placeholder={kind === "localStorage" ? "storage key" : "session storage key"} value={key} onChange={(event) => setKey(event.target.value)} />
-      <textarea aria-label={`${kind} value`} placeholder={kind === "localStorage" ? "storage value" : "session storage value"} value={formatJsonValue(value)} onChange={(event) => setValue(event.target.value)} />
-      <button type="button" onClick={() => void add()}>添加 {kind}</button>
-    </div>
-  );
-}
-
 function ImportControl({ profiles, send, onImported }: { profiles: AccountProfile[]; send: Send; onImported: () => Promise<void> }) {
   const [summary, setSummary] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [busy, setBusy] = useState(false);
 
   async function importFile(file: File | undefined) {
-    if (!file) return;
+    if (!file || busy) return;
+    setBusy(true);
+    setPreview(null);
+    setSummary("");
     try {
       const text = await readFileText(file);
       const bundle = JSON.parse(text) as unknown;
       const preview = previewImport({ schemaVersion: SCHEMA_VERSION, profiles }, bundle);
       setSummary(`新增 ${preview.added} 个，覆盖 ${preview.overwritten} 个。涉及站点：${preview.sites.join(", ") || "无"}`);
-      if (!window.confirm("确认导入？冲突配置将由导入内容覆盖。")) return;
+      setPreview(preview);
+    } catch {
+      setSummary("导入文件无效，未写入任何配置。");
+    } finally { setBusy(false); }
+  }
+
+  async function confirmImport() {
+    if (!preview || busy) return;
+    setBusy(true);
+    try {
+      // Recheck against the current repository so a stale preview cannot silently overwrite new accounts.
+      const current = await send({ type: "listAllProfiles" }) as OperationResult<AccountProfile[]>;
+      if (!current.ok) { setSummary(toSafeErrorText(current.error)); return; }
+      const fresh = previewImport({ schemaVersion: SCHEMA_VERSION, profiles: current.data }, preview.bundle);
+      if (fresh.added !== preview.added || fresh.overwritten !== preview.overwritten) {
+        setPreview(fresh);
+        setSummary(`账号库已变化：新增 ${fresh.added} 个，覆盖 ${fresh.overwritten} 个。请核对后再次确认。`);
+        return;
+      }
       const result = await send({ type: "importProfiles", bundle: preview.bundle });
       if (!result.ok) {
         setSummary(toSafeErrorText(result.error));
         return;
       }
       setSummary("导入成功。");
+      setPreview(null);
       await onImported();
     } catch {
-      setSummary("导入文件无效，未写入任何配置。");
-    }
+      setSummary("导入未完成，请重试。");
+    } finally { setBusy(false); }
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
@@ -654,10 +490,14 @@ function ImportControl({ profiles, send, onImported }: { profiles: AccountProfil
         <label className="file-picker-button">
           <FolderOpen aria-hidden="true" weight="regular" />
           选择配置文件
-          <input className="visually-hidden" type="file" accept="application/json,.json" onChange={(event) => void importFile(event.target.files?.[0])} />
+          <input disabled={busy} className="visually-hidden" type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void importFile(file); }} />
         </label>
       </div>
       {summary && <p className="import-summary" role="status">{summary}</p>}
+      {preview && <div className="button-row">
+        <button disabled={busy} type="button" onClick={() => void confirmImport()}>确认导入</button>
+        <button disabled={busy} type="button" className="secondary" onClick={() => { setPreview(null); setSummary(""); }}>取消导入</button>
+      </div>}
     </div>
   );
 }
@@ -703,14 +543,6 @@ async function readFileText(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsText(file);
   });
-}
-
-function formatJsonValue(value: string) {
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2);
-  } catch {
-    return value;
-  }
 }
 
 function formatProfileTime(value: string) {

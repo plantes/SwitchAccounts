@@ -140,6 +140,7 @@ describe("OptionsApp v1 管理能力", () => {
     await userEvent.click(await screen.findByRole("tab", { name: "Cookie" }));
     await screen.findByDisplayValue("sid");
     await userEvent.selectOptions(screen.getByLabelText("SameSite"), "strict");
+    await userEvent.click(screen.getByRole("button", { name: "保存 Cookie 修改" }));
 
     await waitFor(() => {
       expect(send).toHaveBeenCalledWith(expect.objectContaining({
@@ -165,6 +166,7 @@ describe("OptionsApp v1 管理能力", () => {
     await userEvent.type(screen.getByPlaceholderText("storage key"), "theme");
     await userEvent.type(screen.getByPlaceholderText("storage value"), "dark");
     await userEvent.click(screen.getByRole("button", { name: "添加 localStorage" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存 Web Storage 修改" }));
 
     await waitFor(() => {
       expect(send).toHaveBeenCalledWith(expect.objectContaining({
