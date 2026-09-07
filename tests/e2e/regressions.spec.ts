@@ -1,5 +1,31 @@
 import { test, expect, type AccountProfile } from "./fixtures";
 
+test("侧边栏中文改名按回车或失焦后持久保存，快照保持完整", async ({ site, extension }) => {
+  const page = await extension.context.newPage();
+  await page.goto(site.url("/set?account=A"));
+  const tabId = await extension.tabIdFor(`example.test:${site.port}`);
+  const created = await extension.send<AccountProfile>({ type: "createProfile", tabId, name: "旧手机" });
+  if (!created.ok) throw new Error(created.error.message);
+  const panel = await extension.context.newPage();
+  await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
+  await page.bringToFront();
+  const title = panel.getByLabel("修改账号标题 旧手机", { exact: true });
+  await title.fill("旧手机-无法");
+  await title.press("Enter");
+  await expect(panel.getByLabel("修改账号标题 旧手机-无法", { exact: true })).toHaveValue("旧手机-无法");
+  await panel.reload();
+  const savedTitle = panel.getByLabel("修改账号标题 旧手机-无法", { exact: true });
+  await expect(savedTitle).toHaveValue("旧手机-无法");
+  await savedTitle.fill("旧手机-已恢复");
+  await panel.getByLabel("搜索账号").click();
+  await expect(panel.getByLabel("修改账号标题 旧手机-已恢复", { exact: true })).toHaveValue("旧手机-已恢复");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  const stored = await extension.send<AccountProfile[]>({ type: "listAllProfiles" });
+  expect(stored.ok && stored.data).toEqual([{
+    ...created.data, name: "旧手机-已恢复", normalizedName: "旧手机-已恢复", updatedAt: expect.any(String),
+  }]);
+});
+
 for (const fallback of [false, true]) {
 test(`分区 Cookie、无名 Cookie 和特殊存储键完整往返，fallback=${fallback}`, async ({ site, extension }) => {
   const page = await extension.context.newPage();

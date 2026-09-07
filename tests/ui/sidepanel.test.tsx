@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import SidePanelApp from "../../entrypoints/sidepanel/App";
+import { makeEnvironment } from "../helpers/fixtures";
 import type { AccountProfile, CurrentSiteData, OperationResult } from "../../src/domain/models";
 
 const site: CurrentSiteData = {
@@ -94,13 +95,9 @@ describe("SidePanelApp", () => {
   });
 
   it("允许直接在侧边栏修改账号标题", async () => {
-    const send = vi.fn(async (request) => {
-      if (request.type === "getCurrentSite") return result(site);
-      if (request.type === "listProfiles") return result([profile]);
-      if (request.type === "updateProfile") return result(request.profile);
-      return result({});
-    });
-    render(<SidePanelApp tabId={1} send={send} />);
+    const env = makeEnvironment();
+    const send = vi.fn(env.router.handle);
+    const view = render(<SidePanelApp tabId={1} send={send} />);
 
     const title = await screen.findByRole("textbox", { name: "修改账号标题 Work" });
     await userEvent.click(title);
@@ -112,6 +109,15 @@ describe("SidePanelApp", () => {
       profileId: profile.id,
       name: "小号 月卡 18号",
     }));
+    expect(await screen.findByLabelText("修改账号标题 小号 月卡 18号")).toHaveValue("小号 月卡 18号");
+    expect(env.state().profiles[0]).toMatchObject({
+      name: "小号 月卡 18号", normalizedName: "小号 月卡 18号",
+      cookies: [{ value: "old" }],
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    view.unmount();
+    render(<SidePanelApp tabId={1} send={send} />);
+    expect(await screen.findByLabelText("修改账号标题 小号 月卡 18号")).toHaveValue("小号 月卡 18号");
   });
 });
 
