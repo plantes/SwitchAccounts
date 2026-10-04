@@ -3,6 +3,7 @@ import type {
   ExportBundle,
   ExportScope,
   ImportPreview,
+  ImportProfileVersion,
   ProfileRepository,
 } from "./models";
 import { SCHEMA_VERSION } from "./models";
@@ -52,7 +53,16 @@ export function previewImport(current: ProfileRepository, unknownBundle: unknown
     overwritten,
     sites: [...new Set(bundle.profiles.map((profile) => profile.registrableDomain))].sort(),
     bundle,
+    expectedProfiles: current.profiles
+      .filter(profile => incomingKeys.has(profileConflictKey(profile)))
+      .map(({ id, registrableDomain, normalizedName, updatedAt }) => ({ id, registrableDomain, normalizedName, updatedAt })),
   };
+}
+
+export function sameImportVersions(left: ImportProfileVersion[], right: ImportProfileVersion[]): boolean {
+  const signature = (profiles: ImportProfileVersion[]) => JSON.stringify(profiles.map(profile =>
+    JSON.stringify([profile.id, profile.registrableDomain, profile.normalizedName, profile.updatedAt])).sort());
+  return signature(left) === signature(right);
 }
 
 export function mergeImport(current: ProfileRepository, unknownBundle: unknown, uuid: () => string = () => crypto.randomUUID(), now = new Date().toISOString()): ProfileRepository {

@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { baseProfile, secondProfile, makeEnvironment, now } from "../helpers/fixtures";
-import { buildExportBundle, mergeImport } from "../../src/domain/import-export";
+import { buildExportBundle, mergeImport, previewImport } from "../../src/domain/import-export";
 import { ProfileRepositorySchema } from "../../src/domain/schemas";
 
 it("并发写入不同账号时保留每一个成功修改", async () => {
@@ -105,4 +105,76 @@ it("存储写入异常向界面返回结构化错误", async () => {
   env.storage.set.mockRejectedValue(new Error("quota"));
   expect(await env.router.handle({ type: "renameProfile", profileId: baseProfile.id, name: "New" })).toMatchObject({ ok: false, error: { code: "STORAGE_WRITE_FAILED" } });
   expect(env.state().profiles[0]!.name).toBe("Work");
+});
+
+for (const action of ["resetSite", "switchProfile"] as const) {
+  it(`读取 Cookie 期间同站跳转后停止清理，操作=${action}`, async () => {
+    const env = makeEnvironment();
+    env.chrome.getCookies.mockImplementation(async () => {
+      env.chrome.getDocumentTarget.mockResolvedValue({ ...env.target, documentId: "new-document" });
+      return structuredClone(baseProfile.cookies) as chrome.cookies.Cookie[];
+    });
+    const result = action === "resetSite"
+      ? await env.ops.resetSite(1)
+      : await env.ops.switchProfile(1, baseProfile.id);
+    expect(result).toMatchObject({ ok: false, error: { code: "SITE_CHANGED" } });
+    expect(env.chrome.removeCookie).not.toHaveBeenCalled();
+    expect(env.chrome.setCookie).not.toHaveBeenCalled();
+    expect(env.chrome.reloadTab).not.toHaveBeenCalled();
+  });
+}
+
+it("恢复 Cookie 期间同站跳转后不继续写入，也不清理新页面 Cookie", async () => {
+  const profile = { ...baseProfile, cookies: [baseProfile.cookies[0]!, { ...baseProfile.cookies[0]!, name: "second" }] };
+  const env = makeEnvironment([profile]);
+  env.chrome.setCookie.mockImplementation(async () => {
+    env.chrome.getDocumentTarget.mockResolvedValue({ ...env.target, documentId: "new-document" });
+    return baseProfile.cookies[0]! as chrome.cookies.Cookie;
+  });
+  expect(await env.ops.switchProfile(1, profile.id)).toMatchObject({ ok: false, error: { code: "SITE_CHANGED" } });
+  expect(env.chrome.setCookie).toHaveBeenCalledTimes(1);
+  expect(env.chrome.removeCookie).toHaveBeenCalledTimes(1);
+  expect(env.chrome.reloadTab).not.toHaveBeenCalled();
+});
+
+it("导入在写入队列内校验预览版本，拒绝覆盖排在前面的修改", async () => {
+  const env = makeEnvironment();
+  const bundle = buildExportBundle([baseProfile], now);
+  const preview = previewImport(env.state(), bundle);
+  const update = env.ops.updateProfile({ ...baseProfile, cookies: [{ ...baseProfile.cookies[0]!, value: "latest" }] });
+  const importing = env.router.handle({ type: "importProfiles", bundle, expectedProfiles: preview.expectedProfiles });
+  expect(await update).toMatchObject({ ok: true });
+  expect(await importing).toMatchObject({ ok: false, error: { code: "PROFILE_CONFLICT" } });
+  expect(env.state().profiles[0]!.cookies[0]!.value).toBe("latest");
+});
+
+it("导入原本新增的账号已有同名记录时，旧预览不能覆盖新记录", async () => {
+  const env = makeEnvironment([]);
+  const bundle = buildExportBundle([baseProfile], now);
+  const preview = previewImport(env.state(), bundle);
+  await env.ops.createProfile(1, "Work");
+  const state = env.state();
+  expect(await env.router.handle({ type: "importProfiles", bundle, expectedProfiles: preview.expectedProfiles }))
+    .toMatchObject({ ok: false, error: { code: "PROFILE_CONFLICT" } });
+  expect(env.state()).toEqual(state);
+});
+
+it("同名账号被删除重建后，版本时间相同也不能使用旧导入预览", async () => {
+  const env = makeEnvironment();
+  const bundle = buildExportBundle([baseProfile], now);
+  const preview = previewImport(env.state(), bundle);
+  await env.ops.deleteProfile(baseProfile.id);
+  await env.ops.createProfile(1, "Work");
+  expect(env.state().profiles[0]!.updatedAt).toBe(baseProfile.updatedAt);
+  expect(await env.router.handle({ type: "importProfiles", bundle, expectedProfiles: preview.expectedProfiles }))
+    .toMatchObject({ ok: false, error: { code: "PROFILE_CONFLICT" } });
+});
+
+it("导入不受无关账号修改影响，最新预览可以正常写入", async () => {
+  const env = makeEnvironment([baseProfile, secondProfile]);
+  const bundle = buildExportBundle([baseProfile], now);
+  const preview = previewImport(env.state(), bundle);
+  await env.ops.renameProfile(secondProfile.id, "Home updated");
+  expect(await env.router.handle({ type: "importProfiles", bundle, expectedProfiles: preview.expectedProfiles })).toMatchObject({ ok: true });
+  expect(env.state().profiles.find(p => p.id === secondProfile.id)!.name).toBe("Home updated");
 });

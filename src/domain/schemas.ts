@@ -94,6 +94,13 @@ export const ExportScopeSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("profiles"), profileIds: z.array(z.string().uuid()).min(1) }),
 ]);
 
+const ImportProfileVersionSchema = z.strictObject({
+  id: z.string().uuid(),
+  registrableDomain: z.string().min(1),
+  normalizedName: z.string().min(1),
+  updatedAt: IsoDateSchema,
+});
+
 export const BackgroundRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("getCurrentSite"), tabId: z.number().int().nonnegative() }),
   z.strictObject({ type: z.literal("listProfiles"), registrableDomain: z.string().min(1) }),
@@ -104,7 +111,7 @@ export const BackgroundRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("resetSite"), tabId: z.number().int().nonnegative() }),
   z.strictObject({ type: z.literal("updateProfile"), profile: AccountProfileSchema }),
   z.strictObject({ type: z.literal("renameProfile"), profileId: z.string().uuid(), name: z.string().trim().min(1) }),
-  z.strictObject({ type: z.literal("importProfiles"), bundle: ExportBundleSchema }),
+  z.strictObject({ type: z.literal("importProfiles"), bundle: ExportBundleSchema, expectedProfiles: z.array(ImportProfileVersionSchema).optional() }),
   z.strictObject({ type: z.literal("exportProfiles"), scope: ExportScopeSchema }),
   z.strictObject({ type: z.literal("listAllProfiles") }),
   z.strictObject({ type: z.literal("listGrantedSites") }),

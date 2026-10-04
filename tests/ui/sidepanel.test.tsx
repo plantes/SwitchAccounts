@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import SidePanelApp from "../../entrypoints/sidepanel/App";
@@ -146,6 +146,51 @@ describe("SidePanelApp floating errors", () => {
 });
 
 describe("SidePanelApp error recovery", () => {
+  it("初次加载消息异常时显示错误，并允许重试恢复", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "getCurrentSite") return result(site);
+      return result([profile]);
+    });
+    send.mockRejectedValueOnce(new Error("后台连接中断"));
+    render(<SidePanelApp tabId={1} send={send} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("后台连接中断");
+    await userEvent.click(screen.getByRole("button", { name: "重新加载" }));
+    expect(await screen.findByLabelText("修改账号标题 Work")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("切换到不支持的页面时清除旧站点和旧账号操作入口", async () => {
+    const send = vi.fn(async (request) => {
+      if (request.type === "getCurrentSite") {
+        return request.tabId === 1 ? result(site) : { ok: false as const, error: { code: "UNSUPPORTED_PAGE" as const, message: "当前页面不支持账号操作。" } };
+      }
+      return result([profile]);
+    });
+    const view = render(<SidePanelApp tabId={1} send={send} />);
+    await screen.findByLabelText("修改账号标题 Work");
+    view.rerender(<SidePanelApp tabId={2} send={send} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("不支持账号操作");
+    expect(screen.queryByRole("button", { name: "登出" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("修改账号标题 Work")).not.toBeInTheDocument();
+  });
+
+  it("旧标签页迟到的响应不能覆盖新标签页", async () => {
+    let release!: (value: OperationResult<CurrentSiteData>) => void;
+    const oldResponse = new Promise<OperationResult<CurrentSiteData>>(resolve => { release = resolve; });
+    const send = vi.fn(async (request) => {
+      if (request.type === "getCurrentSite") {
+        return request.tabId === 1 ? oldResponse : { ok: false as const, error: { code: "UNSUPPORTED_PAGE" as const, message: "当前页面不支持账号操作。" } };
+      }
+      return result([profile]);
+    });
+    const view = render(<SidePanelApp tabId={1} send={send} />);
+    view.rerender(<SidePanelApp tabId={2} send={send} />);
+    await screen.findByRole("alert");
+    await act(async () => { release(result(site)); });
+    expect(screen.queryByRole("button", { name: "登出" })).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("不支持账号操作");
+  });
+
   it("保存账号消息异常时显示错误并恢复按钮", async () => {
     const send = vi.fn(async (request) => {
       if (request.type === "getCurrentSite") return result(site);

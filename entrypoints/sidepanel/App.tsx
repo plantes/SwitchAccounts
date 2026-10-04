@@ -24,25 +24,45 @@ export default function SidePanelApp({ tabId, send = sendBackground, requestPerm
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const loadRevision = useRef(0);
 
   async function load() {
+    const revision = ++loadRevision.current;
+    setLoading(true);
     setError("");
-    const siteResult = await send({ type: "getCurrentSite", tabId }) as OperationResult<CurrentSiteData>;
-    if (!siteResult.ok) {
-      setError(toSafeErrorText(siteResult.error));
-      return;
+    setSite(null);
+    setProfiles([]);
+    try {
+      const siteResult = await send({ type: "getCurrentSite", tabId }) as OperationResult<CurrentSiteData>;
+      if (revision !== loadRevision.current) return;
+      if (!siteResult.ok) {
+        setError(toSafeErrorText(siteResult.error));
+        return;
+      }
+      const listResult = await send({
+        type: "listProfiles",
+        registrableDomain: siteResult.data.scope.registrableDomain,
+      }) as OperationResult<AccountProfile[]>;
+      if (revision !== loadRevision.current) return;
+      if (!listResult.ok) {
+        setError(toSafeErrorText(listResult.error));
+        return;
+      }
+      setSite(siteResult.data);
+      setProfiles(listResult.data);
+    } catch (unknownError) {
+      if (revision === loadRevision.current) {
+        setError(unknownError instanceof Error ? unknownError.message : "加载当前站点失败，请重试。");
+      }
+    } finally {
+      if (revision === loadRevision.current) setLoading(false);
     }
-    setSite(siteResult.data);
-    const listResult = await send({
-      type: "listProfiles",
-      registrableDomain: siteResult.data.scope.registrableDomain,
-    }) as OperationResult<AccountProfile[]>;
-    if (listResult.ok) setProfiles(listResult.data);
-    else setError(toSafeErrorText(listResult.error));
   }
 
   useEffect(() => {
     void load();
+    return () => { loadRevision.current++; };
   }, [tabId]);
 
   const visibleProfiles = useMemo(() => searchProfiles(profiles, query), [profiles, query]);
@@ -90,7 +110,7 @@ export default function SidePanelApp({ tabId, send = sendBackground, requestPerm
     });
   }
 
-  if (!site && !error) {
+  if (loading) {
     return <main className="sidepanel-shell loading">加载当前站点…</main>;
   }
 
@@ -117,6 +137,8 @@ export default function SidePanelApp({ tabId, send = sendBackground, requestPerm
           </button>
         </div>
       )}
+
+      {!site && <button type="button" onClick={() => void load()}>重新加载</button>}
 
       {site && (
         <>

@@ -1,5 +1,5 @@
 import { cookieRemovalDetails, fromChromeCookie, toSetDetails } from "../domain/cookies";
-import { buildExportBundle, mergeImport, selectProfiles } from "../domain/import-export";
+import { buildExportBundle, mergeImport, previewImport, sameImportVersions, selectProfiles } from "../domain/import-export";
 import type {
   AccountProfile,
   ChromeAdapter,
@@ -7,6 +7,7 @@ import type {
   DocumentTarget,
   ExportBundle,
   ExportScope,
+  ImportProfileVersion,
   OperationError,
   OperationResult,
   ProfileRepository,
@@ -183,9 +184,12 @@ export class BackgroundOperations {
     return ok(buildExportBundle(selectProfiles(repository, scope), this.deps.now()));
   }
 
-  async importProfiles(bundle: ExportBundle): Promise<OperationResult<ProfileRepository>> {
+  async importProfiles(bundle: ExportBundle, expectedProfiles?: ImportProfileVersion[]): Promise<OperationResult<ProfileRepository>> {
     try {
       return await this.deps.repository.mutate((repository) => {
+        if (expectedProfiles && !sameImportVersions(expectedProfiles, previewImport(repository, bundle).expectedProfiles)) {
+          throw operationFailure("PROFILE_CONFLICT", "账号库已变化，请重新核对导入预览后再确认。");
+        }
         const next = mergeImport(repository, bundle, this.deps.uuid, this.deps.now());
         return { repository: next, result: ok(next) };
       });
@@ -234,15 +238,24 @@ export class BackgroundOperations {
   }
 
   private async clearSiteState(target: DocumentTarget, scope: SiteScope): Promise<void> {
+    await this.assertCurrentDocument(target);
+    let cookies: chrome.cookies.Cookie[];
     try {
-      const cookies = await this.deps.chrome.getCookies(scope.registrableDomain);
-      for (const cookie of cookies.map(fromChromeCookie)) {
-        await this.deps.chrome.removeCookie(cookieRemovalDetails(cookie));
-      }
+      cookies = await this.deps.chrome.getCookies(scope.registrableDomain);
     } catch (cause) {
       throw operationFailure("COOKIE_CLEAR_FAILED", "清理 Cookie 失败。", cause);
     }
+    for (const cookie of cookies.map(fromChromeCookie)) {
+      // Cookie APIs are not document-scoped; recheck after each asynchronous step.
+      await this.assertCurrentDocument(target);
+      try {
+        await this.deps.chrome.removeCookie(cookieRemovalDetails(cookie));
+      } catch (cause) {
+        throw operationFailure("COOKIE_CLEAR_FAILED", "清理 Cookie 失败。", cause);
+      }
+    }
 
+    await this.assertCurrentDocument(target);
     try {
       await this.runWebStorageCommand(target, { command: "clear" });
     } catch (cause) {
@@ -254,6 +267,7 @@ export class BackgroundOperations {
     const nowSeconds = Date.parse(this.deps.now()) / 1000;
     for (const cookie of profile.cookies) {
       if (isExpiredPersistentCookie(cookie, nowSeconds)) continue;
+      await this.assertCurrentDocument(target);
       try {
         await this.deps.chrome.setCookie(toSetDetails(cookie));
       } catch (cause) {
@@ -270,6 +284,7 @@ export class BackgroundOperations {
       localStorage: {},
       sessionStorage: {},
     };
+    await this.assertCurrentDocument(target);
     try {
       await this.runWebStorageCommand(target, { command: "write", snapshot });
     } catch (cause) {
@@ -283,6 +298,16 @@ export class BackgroundOperations {
     } catch {
       // 切换失败时不刷新；保留原始失败给用户重试。
     }
+  }
+
+  private async assertCurrentDocument(target: DocumentTarget): Promise<void> {
+    try {
+      const current = await this.deps.chrome.getDocumentTarget(target.tabId, target.origin);
+      if (current.documentId === target.documentId && current.origin === target.origin) return;
+    } catch {
+      // A closed, inaccessible or navigated tab must stop cookie mutations too.
+    }
+    throw operationFailure("SITE_CHANGED", "页面已跳转或无法访问，请在当前页面重新操作。");
   }
 
   private async runWebStorageCommand(target: DocumentTarget, command: { command: "read" | "clear" } | { command: "write"; snapshot: WebStorageSnapshot }): Promise<WebStorageSnapshot | true> {

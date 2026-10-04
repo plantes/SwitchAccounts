@@ -67,7 +67,10 @@ export interface ImportPreview {
   overwritten: number;
   sites: string[];
   bundle: ExportBundle;
+  expectedProfiles: ImportProfileVersion[];
 }
+
+export type ImportProfileVersion = Pick<AccountProfile, "id" | "registrableDomain" | "normalizedName" | "updatedAt">;
 
 export interface CurrentSiteData {
   scope: SiteScope;
@@ -90,7 +93,7 @@ export type BackgroundRequest =
   | { type: "resetSite"; tabId: number }
   | { type: "updateProfile"; profile: AccountProfile }
   | { type: "renameProfile"; profileId: string; name: string }
-  | { type: "importProfiles"; bundle: ExportBundle }
+  | { type: "importProfiles"; bundle: ExportBundle; expectedProfiles?: ImportProfileVersion[] }
   | { type: "exportProfiles"; scope: ExportScope }
   | { type: "listAllProfiles" }
   | { type: "listGrantedSites" }

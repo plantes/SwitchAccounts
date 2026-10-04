@@ -10,7 +10,7 @@ import {
 import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
 import type { AccountProfile, BackgroundRequest, ExportBundle, ImportPreview, OperationResult } from "../../src/domain/models";
 import { SCHEMA_VERSION } from "../../src/domain/models";
-import { previewImport } from "../../src/domain/import-export";
+import { previewImport, sameImportVersions } from "../../src/domain/import-export";
 import { CookieTab, OverviewTab, WebStorageTab } from "./ProfileEditors";
 import { sendBackground } from "../../src/ui/client";
 import { toSafeErrorText } from "../../src/ui/errors";
@@ -451,12 +451,12 @@ function ImportControl({ profiles, send, onImported }: { profiles: AccountProfil
       const current = await send({ type: "listAllProfiles" }) as OperationResult<AccountProfile[]>;
       if (!current.ok) { setSummary(toSafeErrorText(current.error)); return; }
       const fresh = previewImport({ schemaVersion: SCHEMA_VERSION, profiles: current.data }, preview.bundle);
-      if (fresh.added !== preview.added || fresh.overwritten !== preview.overwritten) {
+      if (!sameImportVersions(fresh.expectedProfiles, preview.expectedProfiles)) {
         setPreview(fresh);
         setSummary(`账号库已变化：新增 ${fresh.added} 个，覆盖 ${fresh.overwritten} 个。请核对后再次确认。`);
         return;
       }
-      const result = await send({ type: "importProfiles", bundle: preview.bundle });
+      const result = await send({ type: "importProfiles", bundle: preview.bundle, expectedProfiles: preview.expectedProfiles });
       if (!result.ok) {
         setSummary(toSafeErrorText(result.error));
         return;

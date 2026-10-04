@@ -134,3 +134,19 @@ it("Escape 取消标题修改，而 Enter 只提交名称", async () => {
   await userEvent.keyboard("{Enter}");
   await waitFor(() => expect(send).toHaveBeenCalledWith({ type: "renameProfile", profileId: baseProfile.id, name: "WorkNew" }));
 });
+
+it("导入预览后账号内容变化，即使覆盖数量相同也要求重新确认", async () => {
+  const env = makeEnvironment();
+  render(<OptionsApp send={r => env.router.handle(r)} />);
+  await userEvent.click(await screen.findByRole("button", { name: "工具" }));
+  const file = new File([JSON.stringify(buildExportBundle([baseProfile], now))], "backup.json", { type: "application/json" });
+  await userEvent.upload(document.querySelector<HTMLInputElement>("input[type=file]")!, file);
+  expect(await screen.findByText(/新增 0 个，覆盖 1 个/)).toBeInTheDocument();
+  await env.ops.updateProfile({ ...baseProfile, cookies: [{ ...baseProfile.cookies[0]!, value: "latest" }] });
+  await userEvent.click(screen.getByRole("button", { name: "确认导入" }));
+  expect(await screen.findByText(/账号库已变化/)).toBeInTheDocument();
+  expect(env.state().profiles[0]!.cookies[0]!.value).toBe("latest");
+  await userEvent.click(screen.getByRole("button", { name: "确认导入" }));
+  expect(await screen.findByText("导入成功。")).toBeInTheDocument();
+  expect(env.state().profiles[0]!.cookies[0]!.value).toBe("old");
+});

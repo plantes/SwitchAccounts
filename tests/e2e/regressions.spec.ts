@@ -92,7 +92,8 @@ for (const fallback of [false, true]) {
 }
 
 for (const action of ["resetSite", "switchProfile"] as const) {
-test(`原标签页跳转后不会清理或刷新另一个网站，操作=${action}`, async ({ site, extension }) => {
+for (const sameSite of [false, true]) {
+test(`原标签页跳转后不会清理或刷新新页面，操作=${action}，同站=${sameSite}`, async ({ site, extension }) => {
   const page = await extension.context.newPage();
   await page.goto(site.url("/set?account=A"));
   const tabId = await extension.tabIdFor(`example.test:${site.port}`);
@@ -113,17 +114,21 @@ test(`原标签页跳转后不会清理或刷新另一个网站，操作=${actio
   });
   const resetting = extension.send(action === "resetSite" ? { type: action, tabId } : { type: action, tabId, profileId: profile.data.id });
   await expect.poll(() => extension.worker.evaluate(() => Boolean((globalThis as unknown as { releaseGate?: () => void }).releaseGate))).toBe(true);
-  await page.goto("https://unrelated.review.test/state");
+  await page.goto(sameSite ? site.url("/set?account=B") : "https://unrelated.review.test/state");
   await page.evaluate(() => { localStorage.setItem("keep", "B"); sessionStorage.setItem("keep", "B"); });
   let reloads = 0;
   page.on("load", () => { reloads++; });
   await extension.worker.evaluate(() => (globalThis as unknown as { releaseGate: () => void }).releaseGate());
   expect(await resetting).toMatchObject({ ok: false });
+  const cookies = await extension.extensionPage.evaluate(() => chrome.cookies.getAll({ domain: "example.test", partitionKey: {} }));
+  expect(cookies).toHaveLength(profile.data.cookies.length);
+  expect(cookies.every(cookie => cookie.value === (sameSite ? "B" : "A"))).toBe(true);
   expect(await page.evaluate(() => [localStorage.getItem("keep"), sessionStorage.getItem("keep")])).toEqual(["B", "B"]);
   expect(reloads).toBe(0);
   await page.goto(site.url("/state"));
-  expect(await page.evaluate(() => localStorage.getItem("account"))).toBe("A");
+  expect(await page.evaluate(() => localStorage.getItem("account"))).toBe(sameSite ? "B" : "A");
 });
+}
 }
 
 test("管理页可连续编辑并保存 Cookie，改名重导后账号独立", async ({ site, extension }, testInfo) => {
@@ -157,4 +162,30 @@ test("管理页可连续编辑并保存 Cookie，改名重导后账号独立", a
   expect(await extension.send({ type: "deleteProfile", profileId: list.data.find(profile => profile.name === "Work")!.id })).toMatchObject({ ok: true });
   const remaining = await extension.send<AccountProfile[]>({ type: "listAllProfiles" });
   expect(remaining.ok && remaining.data.map(profile => profile.name)).toEqual(["Renamed"]);
+});
+
+test("导入预览后另一个页面更新账号，保留新数据并要求再次确认", async ({ site, extension }) => {
+  const page = await extension.context.newPage();
+  await page.goto(site.url("/set?account=A"));
+  const tabId = await extension.tabIdFor(`example.test:${site.port}`);
+  const created = await extension.send<AccountProfile>({ type: "createProfile", tabId, name: "Work" });
+  if (!created.ok) throw new Error(created.error.message);
+  const ui = extension.extensionPage;
+  await ui.reload();
+  await ui.getByRole("button", { name: "工具", exact: true }).click();
+  await ui.locator("input[type=file]").setInputFiles({
+    name: "backup.json", mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ format: "switchaccounts", schemaVersion: 2, exportedAt: new Date().toISOString(), profiles: [created.data] })),
+  });
+  await expect(ui.getByRole("status")).toContainText("新增 0 个，覆盖 1 个");
+  const changed = { ...created.data, cookies: created.data.cookies.map(cookie => ({ ...cookie, value: "newer" })) };
+  expect(await extension.send({ type: "updateProfile", profile: changed })).toMatchObject({ ok: true });
+  await ui.getByRole("button", { name: "确认导入" }).click();
+  await expect(ui.getByRole("status")).toContainText("账号库已变化");
+  const current = await extension.send<AccountProfile[]>({ type: "listAllProfiles" });
+  expect(current.ok && current.data[0]!.cookies.every(cookie => cookie.value === "newer")).toBe(true);
+  await ui.getByRole("button", { name: "确认导入" }).click();
+  await expect(ui.getByRole("status")).toHaveText("导入成功。");
+  const restored = await extension.send<AccountProfile[]>({ type: "listAllProfiles" });
+  expect(restored.ok && restored.data[0]!.cookies).toEqual(created.data.cookies);
 });

@@ -62,7 +62,7 @@ function dispatch(operations: Operations, request: BackgroundRequest): Promise<O
     case "renameProfile":
       return operations.renameProfile(request.profileId, request.name);
     case "importProfiles":
-      return operations.importProfiles(request.bundle);
+      return operations.importProfiles(request.bundle, request.expectedProfiles);
     case "exportProfiles":
       return operations.exportProfiles(request.scope);
     case "listGrantedSites":
